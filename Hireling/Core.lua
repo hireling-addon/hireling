@@ -138,6 +138,9 @@ function ns.InitDB()
   if ns.db.theme ~= "acid" and ns.db.theme ~= "ice" and ns.db.theme ~= "flare" then
     ns.db.theme = "acid"
   end
+  if ns.db.testMode ~= true then
+    ns.db.testMode = false
+  end
   ns.Repair()
 end
 
@@ -381,7 +384,7 @@ local function AddSampleReview(key, side, author, about, stars, note)
   })
 end
 
-function ns.LoadSample()
+function ns.LoadSample(quiet)
   local ruleset = ns.Ruleset()
   local function add(listing)
     listing.ruleset = ruleset
@@ -449,7 +452,14 @@ function ns.LoadSample()
   AddSampleReview("Hest:port01", "seller", "Ysabel", "Hest", 5, "Paid before the first portal.")
   AddSampleReview("Bryn:stock1", "buyer", "Bryn", "Pellin", 4, "One wipe, then the clear.")
   AddSampleReview("Bryn:stock1", "seller", "Pellin", "Bryn", 2, "The group was short a healer.")
-  ns.Print("Sample listings are local only. They are not sent on the channel.")
+  ns.db.testMode = true
+  if quiet then
+    if ns.Refresh then
+      ns.Refresh()
+    end
+    return
+  end
+  ns.Print("Test mode is on. Sample cards stay on this computer.")
   if ns.frame and not ns.frame:IsShown() then
     ns.frame:Show()
   end
@@ -459,6 +469,7 @@ function ns.LoadSample()
 end
 
 function ns.ClearSample()
+  ns.db.testMode = false
   for key, listing in pairs(ns.db.listings) do
     if listing.localOnly then
       ns.db.listings[key] = nil
@@ -472,7 +483,18 @@ function ns.ClearSample()
   if ns.Refresh then
     ns.Refresh()
   end
-  ns.Print("Sample listings removed.")
+  ns.Print("Test mode is off. Sample cards removed.")
+end
+
+function ns.SetTestMode(on)
+  if on then
+    ns.LoadSample(false)
+  else
+    ns.ClearSample()
+  end
+  if ns.UpdateStatus then
+    ns.UpdateStatus()
+  end
 end
 
 function ns.Toggle()
@@ -522,10 +544,8 @@ function ns.Slash(raw)
     end
   elseif cmd == "reset" then
     ns.ResetPosition()
-  elseif cmd == "sample" then
-    ns.LoadSample()
-  elseif cmd == "clearsample" then
-    ns.ClearSample()
+  elseif cmd == "sample" or cmd == "test" then
+    ns.SetTestMode(not ns.db.testMode)
   elseif cmd == "scale" then
     local value = tonumber(rest)
     if not value then
@@ -566,7 +586,7 @@ function ns.Slash(raw)
       ns.Refresh()
     end
   else
-    ns.Print("Commands: show, sync, check, sample, clearsample, reset, scale 1, ruleset Normal")
+    ns.Print("Commands: show, sync, check, test, reset, scale 1, ruleset Normal")
   end
 end
 
@@ -606,6 +626,9 @@ events:SetScript("OnEvent", function(_, event, arg1, arg2)
         ns.Print("The window failed to build: " .. tostring(err))
         ns.Log("UI build error: " .. tostring(err))
       end
+    end
+    if ns.db.testMode and ns.LoadSample then
+      ns.LoadSample(true)
     end
     return
   end

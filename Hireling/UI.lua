@@ -274,6 +274,12 @@ function ns.UpdateStatus()
   else
     ns.SetStatus(where .. " · not joined yet. Pay in the trade window.")
   end
+  if ns.db and ns.db.testMode and ns.status then
+    ns.SetStatus("Test mode. Sample cards stay on this computer.")
+  end
+  if ns.testButton then
+    ns.testButton:SetActive(ns.db and ns.db.testMode == true)
+  end
 end
 
 local function AverageText(avg, count)
@@ -718,6 +724,15 @@ function ns.AskListing(listing)
   if title == "" then
     title = "this job"
   end
+  if listing.localOnly == true then
+    ns.ShowReply(who, title)
+    if ns.reply and ns.reply:IsShown() then
+      ns.reply.localTest = true
+      ns.reply.from:SetText(who .. " asked (test)")
+    end
+    ns.SetStatus("Test ask. Nothing was sent on the channel.")
+    return
+  end
   local id = ns.Clean(listing.id or "job", 12)
   local packet = "Q\031" .. who .. "\031" .. id .. "\031" .. title
   if ns.SendTo then
@@ -778,6 +793,15 @@ function ns.CommitReply()
     extra = ns.Clean(reply.edit:GetText(), 80)
   end
   local packet = "A\031" .. reply.who .. "\031" .. reply.job .. "\031" .. choice .. "\031" .. extra
+  if reply.localTest then
+    local who = reply.who
+    local job = reply.job
+    reply.localTest = nil
+    reply:Hide()
+    ns.ShowAnswer(who, job, choice, extra)
+    ns.SetStatus("Test answer. Nothing was sent on the channel.")
+    return
+  end
   if ns.SendTo then
     ns.SendTo(reply.who, packet)
   elseif ns.Send then
@@ -1393,6 +1417,12 @@ function ns.BuildUI()
   title:SetPoint("LEFT", 12, 0)
   title:SetText("Hireling")
   Color(title, GOLD)
+  local testBtn = ClickButton(drag, "Test", 64, 18)
+  testBtn:SetPoint("RIGHT", -4, 0)
+  testBtn.onClick = function()
+    ns.SetTestMode(not (ns.db and ns.db.testMode))
+  end
+  ns.testButton = testBtn
   ns.drag = drag
 
   local tabBar = CreateFrame("Frame", nil, frame)
