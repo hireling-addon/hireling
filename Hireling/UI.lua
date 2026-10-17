@@ -1221,7 +1221,7 @@ function ns.RefreshChannel()
   ns.channel.summary:SetText(
     "Channel " .. ns.ChannelName()
       .. "\nId " .. tostring(id or "not joined")
-      .. "\nFaction " .. ns.FactionName(ns.FactionCode())
+      .. "\nSide " .. ns.FactionName(ns.FactionCode()) .. ". The other faction cannot be reached."
       .. "\nRuleset " .. ns.Ruleset()
       .. "\nPrefix " .. (ns.prefixRegistered and "registered" or "not registered")
       .. "\nQueued " .. tostring(ns.QueueCount and ns.QueueCount() or 0)
