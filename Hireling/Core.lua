@@ -132,6 +132,12 @@ function ns.InitDB()
   if type(ns.db.log) ~= "table" then
     ns.db.log = {}
   end
+  if type(ns.db.seen) ~= "table" then
+    ns.db.seen = {}
+  end
+  if type(ns.db.inbox) ~= "table" then
+    ns.db.inbox = {}
+  end
   if type(ns.db.scale) ~= "number" then
     ns.db.scale = 1
   end
@@ -190,7 +196,7 @@ end
 function ns.Prune()
   local now = time()
   for key, listing in pairs(ns.db.listings) do
-    if listing.localOnly ~= true and type(listing.updated) == "number" and now - listing.updated > ns.WEEK then
+    if listing.localOnly ~= true and listing.standing ~= true and type(listing.updated) == "number" and now - listing.updated > ns.WEEK then
       ns.db.listings[key] = nil
     end
   end
@@ -312,6 +318,84 @@ function ns.AddReview(review)
     table.remove(ns.db.reviews, 1)
   end
   ns.db.reviews[#ns.db.reviews + 1] = review
+  if ns.Refresh then
+    ns.Refresh()
+  end
+end
+
+function ns.NoteSeen(name)
+  if not ns.db or type(name) ~= "string" or name == "" then
+    return
+  end
+  ns.db.seen[name] = time()
+end
+
+function ns.IsHere(name)
+  local seen = ns.db and ns.db.seen and ns.db.seen[name]
+  return type(seen) == "number" and time() - seen < 300
+end
+
+function ns.PushInbox(who, title, id)
+  if not ns.db then
+    return
+  end
+  ns.db.inbox[#ns.db.inbox + 1] = {
+    who = who,
+    title = title or "this job",
+    id = id or "",
+    at = time(),
+  }
+  while #ns.db.inbox > 20 do
+    table.remove(ns.db.inbox, 1)
+  end
+  if ns.Refresh then
+    ns.Refresh()
+  end
+end
+
+function ns.DropInbox(who, title)
+  if not ns.db or type(ns.db.inbox) ~= "table" then
+    return
+  end
+  for index = #ns.db.inbox, 1, -1 do
+    local item = ns.db.inbox[index]
+    if item.who == who and item.title == title then
+      table.remove(ns.db.inbox, index)
+      break
+    end
+  end
+end
+
+function ns.ClaimListing(owner, id, by)
+  if not ns.db or not owner or not id or id == "" then
+    return
+  end
+  local listing = ns.db.listings[ns.Key(owner, id)]
+  if listing then
+    listing.claimed = by or ""
+    if ns.Refresh then
+      ns.Refresh()
+    end
+  end
+end
+
+function ns.MarkDone(key, fromOther)
+  local job = ns.db and ns.db.jobs[key]
+  if not job then
+    return
+  end
+  if fromOther then
+    job.theirDone = true
+  else
+    job.mineDone = true
+  end
+  if job.mineDone and job.theirDone and not job.counted then
+    job.counted = true
+    local listing = ns.db.listings[key]
+    if listing then
+      listing.ordersCompleted = math.floor(tonumber(listing.ordersCompleted) or 0) + 1
+    end
+  end
   if ns.Refresh then
     ns.Refresh()
   end
@@ -458,6 +542,8 @@ function ns.LoadSample(quiet)
   AddSampleReview("Hest:port01", "seller", "Ysabel", "Hest", 5, "Paid before the first portal.")
   AddSampleReview("Bryn:stock1", "buyer", "Bryn", "Pellin", 4, "One wipe, then the clear.")
   AddSampleReview("Bryn:stock1", "seller", "Pellin", "Bryn", 2, "The group was short a healer.")
+  ns.NoteSeen("Maela")
+  ns.NoteSeen("Hest")
   ns.db.testMode = true
   if quiet then
     if ns.Refresh then

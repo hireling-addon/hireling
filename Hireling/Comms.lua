@@ -431,6 +431,9 @@ local function OnAddonMessage(prefix, message, distribution, sender, _, _, _, ch
   if not who then
     return
   end
+  if ns.NoteSeen then
+    ns.NoteSeen(who)
+  end
   local opcode = string.sub(message, 1, 1)
   if opcode == "Q" or opcode == "A" then
     local parts = Split(message)
@@ -442,7 +445,10 @@ local function OnAddonMessage(prefix, message, distribution, sender, _, _, _, ch
       return
     end
     if opcode == "Q" and ns.ShowReply then
-      ns.ShowReply(who, parts[4] or "this job")
+      if ns.PushInbox then
+        ns.PushInbox(who, parts[4] or "this job", parts[3] or "")
+      end
+      ns.ShowReply(who, parts[4] or "this job", parts[3] or "")
     elseif opcode == "A" and ns.ShowAnswer then
       ns.ShowAnswer(who, parts[3] or "this job", parts[4] or "y", parts[5] or "")
     end
@@ -513,6 +519,23 @@ local function OnAddonMessage(prefix, message, distribution, sender, _, _, _, ch
     elseif owner == mine then
       local myRole = role == "buyer" and "seller" or "buyer"
       ns.RememberJob(key, myRole, who)
+    end
+    return
+  end
+  if opcode == "C" then
+    local parts = Split(message)
+    local id = parts[2] or ""
+    if string.match(id, "^[a-z0-9]+$") and ns.ClaimListing then
+      ns.ClaimListing(who, id, ns.Clean(parts[3], 12))
+    end
+    return
+  end
+  if opcode == "D" then
+    local parts = Split(message)
+    local owner = ns.Clean(parts[2], 12)
+    local id = parts[3] or ""
+    if owner ~= "" and string.match(id, "^[a-z0-9]+$") and ns.MarkDone then
+      ns.MarkDone(ns.Key(owner, id), true)
     end
     return
   end

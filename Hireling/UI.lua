@@ -325,7 +325,10 @@ function ns.Filtered(includeJobs)
       local job = ns.db.jobs[key]
       local mineRow = listing.owner == mine or job ~= nil
       local kindOk = ns.filterKind == "all" or listing.kind == ns.filterKind
-      if Matches(listing, needle) and kindOk then
+      local categoryOk = not ns.filterCategory or ns.filterCategory == "all" or listing.category == ns.filterCategory
+      local claimed = listing.claimed and listing.claimed ~= ""
+      local hidden = claimed and listing.owner ~= mine and listing.claimed ~= mine
+      if Matches(listing, needle) and kindOk and categoryOk and (includeJobs or not hidden) then
         if not includeJobs or mineRow then
           out[#out + 1] = listing
         end
@@ -363,7 +366,17 @@ local function FillRow(row, listing)
   row.kind:SetText(place)
   row.fee:SetText(ns.FormatCoin(listing.feeCopper))
   row.title:SetText(ns.Safe(listing.title))
-  row.meta:SetText(ns.Safe(listing.owner))
+  local poster = ns.Safe(listing.owner)
+  if ns.IsHere and ns.IsHere(listing.owner) then
+    poster = poster .. " · Here"
+  end
+  if listing.standing then
+    poster = poster .. " · Standing"
+  end
+  if listing.claimed and listing.claimed ~= "" then
+    poster = poster .. " · Claimed"
+  end
+  row.meta:SetText(poster)
   local avg, orders = ns.PosterStats(listing.owner)
   if type(listing.ordersCompleted) == "number" and listing.ordersCompleted > orders then
     orders = math.floor(listing.ordersCompleted)
@@ -543,6 +556,11 @@ function ns.RefreshBoard()
   ns.board.bids:SetActive(ns.filterKind == "task")
   ns.board.recent:SetActive(ns.sortMode ~= "payout")
   ns.board.payout:SetActive(ns.sortMode == "payout")
+  if ns.board.category then
+    local label = ns.filterCategory or "all"
+    ns.board.category:SetLabel(label == "all" and "All crafts" or label)
+    ns.board.category:SetActive(label ~= "all")
+  end
   LayoutRows(ns.board.scroll, ns.board.rows, listings)
   if #listings == 0 then
     ns.board.empty:Show()
@@ -568,6 +586,22 @@ function ns.RefreshYours()
   ns.filterKind = previous
   ns.searchText = previousSearch
   LayoutRows(ns.yours.scroll, ns.yours.rows, listings)
+  if ns.yours.inbox then
+    local lines = {}
+    local inbox = ns.db and ns.db.inbox or {}
+    for index = 1, #inbox do
+      local item = inbox[index]
+      lines[#lines + 1] = (item.who or "Someone") .. " asked about " .. (item.title or "a job")
+    end
+    if #lines == 0 then
+      ns.yours.inbox:SetText("Inbox is empty.")
+    else
+      ns.yours.inbox:SetText(table.concat(lines, "\n"))
+    end
+    if ns.yours.openInbox then
+      ns.yours.openInbox:SetEnabledState(#inbox > 0)
+    end
+  end
   if #listings == 0 then
     ns.yours.empty:Show()
   else
@@ -632,6 +666,19 @@ function ns.RefreshDetail()
     ns.detail.action.onClick = function()
       ns.Withdraw(listing)
     end
+  elseif job and not (job.mineDone and job.theirDone) then
+    ns.detail.action:SetLabel(job.mineDone and "Waiting on them" or "Mark done")
+    ns.detail.action.enabled = not job.mineDone
+    ns.detail.action.onClick = function()
+      if not job.mineDone then
+        ns.MarkDone(key, false)
+        if listing.localOnly == true then
+          ns.MarkDone(key, true)
+        else
+          ns.Send("D\031" .. ns.Clean(listing.owner, 12) .. "\031" .. ns.Clean(listing.id, 12))
+        end
+      end
+    end
   elseif job then
     ns.detail.action:SetLabel(job.role == "seller" and "You are doing this" or "You took this")
     ns.detail.action.enabled = false
@@ -660,7 +707,8 @@ function ns.RefreshDetail()
   end
   local side = job and job.role or nil
   local already = side and mine and ns.HasReview(key, side, mine)
-  if job and mine and listing.owner ~= mine and not already then
+  local finished = job and job.mineDone and job.theirDone
+  if finished and mine and listing.owner ~= mine and not already then
     ns.detail.form:Show()
     ns.detail.formLabel:SetText(side == "seller" and "Your stars for the buyer" or "Your stars for the work")
     PaintStarPicker()
@@ -728,7 +776,10 @@ function ns.AskListing(listing)
     title = "this job"
   end
   if listing.localOnly == true then
-    ns.ShowReply(who, title)
+    if ns.PushInbox then
+      ns.PushInbox(who, title, listing.id)
+    end
+    ns.ShowReply(who, title, listing.id)
     if ns.reply and ns.reply:IsShown() then
       ns.reply.localTest = true
       ns.reply.from:SetText(who .. " asked (test)")
@@ -799,11 +850,27 @@ function ns.CommitReply()
   if reply.localTest then
     local who = reply.who
     local job = reply.job
+    local listingId = reply.listingId
     reply.localTest = nil
     reply:Hide()
+    if choice == "y" and ns.ClaimListing then
+      ns.ClaimListing(who, listingId, ns.MyName() or "You")
+    end
+    if ns.DropInbox then
+      ns.DropInbox(who, job)
+    end
     ns.ShowAnswer(who, job, choice, extra)
     ns.SetStatus("Test answer. Nothing was sent on the channel.")
     return
+  end
+  if choice == "y" and reply.listingId and reply.listingId ~= "" then
+    ns.Send("C\031" .. ns.Clean(reply.listingId, 12) .. "\031" .. ns.Clean(reply.who, 12))
+    if ns.ClaimListing then
+      ns.ClaimListing(ns.MyName(), reply.listingId, reply.who)
+    end
+  end
+  if ns.DropInbox then
+    ns.DropInbox(reply.who, reply.job)
   end
   if ns.SendTo then
     ns.SendTo(reply.who, packet)
@@ -882,7 +949,7 @@ function ns.ReleasePopups()
     end
   end
   if lastAsk then
-    ns.ShowReply(lastAsk.a, lastAsk.b)
+    ns.ShowReply(lastAsk.a, lastAsk.b, lastAsk.c)
   end
   if lastAnswer then
     ns.ShowAnswer(lastAnswer.a, lastAnswer.b, lastAnswer.c, lastAnswer.d)
@@ -903,9 +970,9 @@ function ns.StashPopupsForCombat()
   end
 end
 
-function ns.ShowReply(who, title)
+function ns.ShowReply(who, title, listingId)
   if ns.InCombat() then
-    ns.HoldPopup("ask", who, title or "this job")
+    ns.HoldPopup("ask", who, title or "this job", listingId)
     return
   end
   if not ns.reply then
@@ -1030,6 +1097,7 @@ function ns.ShowReply(who, title)
   local reply = ns.reply
   reply.who = who
   reply.job = title or "this job"
+  reply.listingId = listingId or ""
   if reply.job == "" then
     reply.job = "this job"
   end
@@ -1227,6 +1295,7 @@ function ns.Publish()
     feeCopper = fee,
     zone = zone,
     ruleset = ns.Ruleset(),
+    standing = ns.post.standing == true,
     updated = time(),
   }
   local packed = ns.PackListing(listing)
@@ -1411,6 +1480,7 @@ function ns.BuildUI()
   end
   ns.edits = {}
   ns.filterKind = "all"
+  ns.filterCategory = "all"
   ns.sortMode = "recent"
   ns.searchText = ""
   ns.page = "board"
@@ -1591,8 +1661,24 @@ function ns.BuildUI()
     ns.sortMode = "payout"
     ns.RefreshBoard()
   end
+  local category = ClickButton(board, "All crafts", 524, 22)
+  category:SetPoint("TOPLEFT", recent, "BOTTOMLEFT", 0, -4)
+  category.onClick = function()
+    local order = { "all", "Craft", "Enchant", "Gather", "Group", "Portal", "Other" }
+    local nextIndex = 1
+    for index = 1, #order do
+      if order[index] == (ns.filterCategory or "all") then
+        nextIndex = index + 1
+      end
+    end
+    if nextIndex > #order then
+      nextIndex = 1
+    end
+    ns.filterCategory = order[nextIndex]
+    ns.RefreshBoard()
+  end
   local boardScroll = ScrollArea(board)
-  boardScroll:SetPoint("TOPLEFT", recent, "BOTTOMLEFT", 0, -6)
+  boardScroll:SetPoint("TOPLEFT", category, "BOTTOMLEFT", 0, -6)
   boardScroll:SetPoint("BOTTOMRIGHT", board, "BOTTOMRIGHT", 0, 0)
   local empty = CreateFrame("Frame", nil, board)
   empty:SetAllPoints(boardScroll)
@@ -1610,6 +1696,7 @@ function ns.BuildUI()
     bids = bids,
     recent = recent,
     payout = payout,
+    category = category,
     empty = empty,
   }
 
@@ -1687,6 +1774,13 @@ function ns.BuildUI()
   end
   local bytes = Font(post, true)
   bytes:SetPoint("BOTTOMLEFT", postBtn, "TOPLEFT", 0, 4)
+  local standingBtn = ClickButton(post, "One time", 140, 22)
+  standingBtn:SetPoint("BOTTOMLEFT", bytes, "TOPLEFT", 0, 4)
+  standingBtn.onClick = function()
+    ns.post.standing = not ns.post.standing
+    standingBtn:SetLabel(ns.post.standing and "Keep this up" or "One time")
+    standingBtn:SetActive(ns.post.standing == true)
+  end
   ns.post.title = titleEdit
   ns.post.gold = gold
   ns.post.silver = silver
@@ -1712,16 +1806,33 @@ function ns.BuildUI()
 
   local yours = Page()
   ns.pages.yours = yours
+  local inboxText = Font(yours, true)
+  inboxText:SetPoint("TOPLEFT", 0, 0)
+  inboxText:SetPoint("TOPRIGHT", -96, 0)
+  inboxText:SetHeight(44)
+  inboxText:SetJustifyH("LEFT")
+  inboxText:SetWordWrap(true)
+  inboxText:SetText("Inbox is empty.")
+  local openInbox = ClickButton(yours, "Open ask", 90, 22)
+  openInbox:SetPoint("TOPRIGHT", 0, 0)
+  openInbox.onClick = function()
+    local inbox = ns.db and ns.db.inbox or {}
+    local item = inbox[#inbox]
+    if item and ns.ShowReply then
+      ns.ShowReply(item.who, item.title, item.id)
+    end
+  end
   local yoursScroll = ScrollArea(yours)
-  yoursScroll:SetAllPoints(yours)
+  yoursScroll:SetPoint("TOPLEFT", 0, -48)
+  yoursScroll:SetPoint("BOTTOMRIGHT", 0, 0)
   local yoursEmpty = CreateFrame("Frame", nil, yours)
-  yoursEmpty:SetAllPoints(yours)
+  yoursEmpty:SetAllPoints(yoursScroll)
   yoursEmpty:EnableMouse(false)
   local yoursText = Font(yoursEmpty, false)
   yoursText:SetPoint("CENTER")
   yoursText:SetText("Nothing of yours on this ruleset yet.")
   yoursEmpty:Hide()
-  ns.yours = { scroll = yoursScroll, rows = {}, empty = yoursEmpty }
+  ns.yours = { scroll = yoursScroll, rows = {}, empty = yoursEmpty, inbox = inboxText, openInbox = openInbox }
 
   local channel = Page()
   ns.pages.channel = channel
