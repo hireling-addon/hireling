@@ -61,8 +61,8 @@ function ns.PackListing(listing)
     note,
   }
   local message = table.concat(parts, SEP)
-  if #message > 255 then
-    local over = #message - 255
+  if #message > ns.MAX_MSG then
+    local over = #message - ns.MAX_MSG
     parts[10] = string.sub(parts[10], 1, math.max(0, #parts[10] - over))
     message = table.concat(parts, SEP)
   end
@@ -147,22 +147,32 @@ end
 
 function ns.ChannelId()
   local want = ns.ChannelName()
-  if GetChannelName then
-    local id = GetChannelName(want)
-    if type(id) == "number" and id > 0 then
+  local function usableNumber(value)
+    if ns.IsSecret(value) or type(value) ~= "number" or value <= 0 then
+      return nil
+    end
+    return value
+  end
+  if type(GetChannelName) == "function" then
+    local id = usableNumber(GetChannelName(want))
+    if id then
       return id
     end
   end
-  if GetChannelList then
-    local list = { GetChannelList() }
-    local index = 1
-    while index <= #list do
-      local id = list[index]
-      local name = list[index + 1]
-      if type(name) == "string" and string.lower(name) == string.lower(want) and type(id) == "number" then
-        return id
+  if type(GetChannelList) == "function" then
+    local ok, list = pcall(function()
+      return { GetChannelList() }
+    end)
+    if ok and type(list) == "table" then
+      local index = 1
+      while index <= #list do
+        local id = usableNumber(list[index])
+        local name = ns.Plain(list[index + 1])
+        if id and type(name) == "string" and string.lower(name) == string.lower(want) then
+          return id
+        end
+        index = index + 3
       end
-      index = index + 3
     end
   end
   return nil
@@ -224,10 +234,11 @@ local queue = {}
 local pumping = false
 
 local function ResultThrottled(result)
+  result = ns.Plain(result)
   if Enum and Enum.SendAddonMessageResult and result == Enum.SendAddonMessageResult.AddonMessageThrottle then
     return true
   end
-  return tostring(result) == "AddonMessageThrottle"
+  return tostring(result or "") == "AddonMessageThrottle"
 end
 
 local function Pump()
@@ -280,13 +291,17 @@ local function Pump()
       again(2, message)
       return
     end
-    local result = second
+    local result = ns.Plain(second)
     if result == nil then
-      result = first
+      result = ns.Plain(first)
     end
     if ResultThrottled(result) then
       again(1, message)
       return
+    end
+    if type(result) == "number" and result ~= 0 and not ns.toldSendFail then
+      ns.toldSendFail = true
+      ns.Log("The channel refused a message, code " .. tostring(result) .. ".")
     end
     again(0.25, nil)
   end
@@ -294,7 +309,7 @@ local function Pump()
 end
 
 function ns.SendTo(name, message)
-  if type(name) ~= "string" or name == "" or type(message) ~= "string" or message == "" or #message > 255 then
+  if type(name) ~= "string" or name == "" or type(message) ~= "string" or message == "" or #message > ns.MAX_MSG then
     return false
   end
   if C_ChatInfo and C_ChatInfo.SendAddonMessage then
@@ -317,7 +332,7 @@ function ns.Send(message)
   if type(message) ~= "string" or message == "" then
     return false
   end
-  if #message > 255 then
+  if #message > ns.MAX_MSG then
     ns.Log("Blocked a " .. #message .. "-byte message.")
     return false
   end
@@ -353,7 +368,7 @@ local function SendOwn(skipHello)
     local review = ns.db.reviews[i]
     if review.author == mine and review.localOnly ~= true and reviewsSent < 12 then
       local packed = ns.PackReview(review)
-      if packed and #packed <= 255 then
+      if packed and #packed <= ns.MAX_MSG then
         ns.Send(packed)
         reviewsSent = reviewsSent + 1
       end
@@ -404,6 +419,7 @@ function ns.ReplyHello(sender)
 end
 
 local function ShortName(sender)
+  sender = ns.Plain(sender)
   if type(sender) ~= "string" then
     return nil
   end
@@ -415,6 +431,13 @@ local function ShortName(sender)
 end
 
 local function OnAddonMessage(prefix, message, distribution, sender, _, _, _, channelName)
+  if ns.IsSecret(prefix) or ns.IsSecret(message) or ns.IsSecret(sender) then
+    return
+  end
+  prefix = ns.Plain(prefix)
+  message = ns.Plain(message)
+  distribution = ns.Plain(distribution)
+  channelName = ns.Plain(channelName)
   if prefix ~= ns.PREFIX or type(message) ~= "string" or not ns.db then
     return
   end
@@ -557,9 +580,40 @@ if CreateFrame then
   listener:SetScript("OnEvent", function(_, _, ...)
     local ok, err = pcall(OnAddonMessage, ...)
     if not ok then
-      ns.Log("Message error: " .. tostring(err))
+      ns.Log("Message error: " .. tostring(ns.Plain(err) or "sealed"))
     end
   end)
+  local function leaked(_, _, ...)
+    local first = ns.Plain(select(1, ...))
+    if type(first) == "string" and (first == ns.PREFIX or string.find(first, SEP, 1, true)) then
+      return true
+    end
+    return false
+  end
+  local function leakedAddon(_, _, prefix, message)
+    if ns.Plain(prefix) == ns.PREFIX then
+      return true
+    end
+    message = ns.Plain(message)
+    return type(message) == "string" and string.find(message, SEP, 1, true) ~= nil
+  end
+  local add = ChatFrame_AddMessageEventFilter
+  if type(add) ~= "function" and type(ChatFrameUtil) == "table" then
+    add = ChatFrameUtil.AddMessageEventFilter
+  end
+  if type(add) == "function" then
+    local events = {
+      "CHAT_MSG_CHANNEL",
+      "CHAT_MSG_SAY",
+      "CHAT_MSG_YELL",
+      "CHAT_MSG_SYSTEM",
+      "CHAT_MSG_WHISPER",
+    }
+    for index = 1, #events do
+      pcall(add, events[index], leaked)
+    end
+    pcall(add, "CHAT_MSG_ADDON", leakedAddon)
+  end
 end
 
 function ns.SelfTest()
@@ -579,7 +633,7 @@ function ns.SelfTest()
     note = string.rep("N", 200) .. "|cffff0000|Hitem:123|h[x]|h|r",
   }
   local packed = ns.PackListing(listing)
-  if type(packed) ~= "string" or #packed > 255 then
+  if type(packed) ~= "string" or #packed > ns.MAX_MSG then
     add("listing packet is " .. tostring(packed and #packed or "nil") .. " bytes")
   end
   if packed and string.find(packed, "|", 1, true) then
@@ -596,7 +650,7 @@ function ns.SelfTest()
     about = "LongerThanTwelve",
     note = string.rep("R", 120),
   })
-  if not review or #review > 255 then
+  if not review or #review > ns.MAX_MSG then
     add("review packet is too large")
   end
   local bad = ns.UnpackListing("L\031no\031o\031a\031Craft\0311\031Zone\031Meet\031Title\031Note", "Tester")

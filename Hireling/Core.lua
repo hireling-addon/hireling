@@ -8,6 +8,7 @@ ns.PREFIX = "Hireling"
 ns.VERSION = "0.1.0"
 ns.WEEK = 7 * 24 * 60 * 60
 ns.MAX_FEE = 5000 * 10000
+ns.MAX_MSG = 250
 
 local POINT = {
   CENTER = true,
@@ -21,26 +22,52 @@ local POINT = {
   RIGHT = true,
 }
 
+function ns.IsSecret(value)
+  if type(issecretvalue) ~= "function" then
+    return false
+  end
+  local ok, secret = pcall(issecretvalue, value)
+  return ok and secret and true or false
+end
+
+function ns.Plain(value)
+  if value == nil or ns.IsSecret(value) then
+    return nil
+  end
+  return value
+end
+
 function ns.Print(text)
-  local line = "|cffffd200Hireling:|r " .. tostring(text)
+  local shown = ns.Plain(text)
+  local line = "|cffffd200Hireling:|r " .. tostring(shown == nil and "" or shown)
   if DEFAULT_CHAT_FRAME then
     DEFAULT_CHAT_FRAME:AddMessage(line)
   end
 end
 
 function ns.Trim(text)
-  return (tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", ""))
+  local shown = ns.Plain(text)
+  if type(shown) ~= "string" then
+    return ""
+  end
+  return (shown:gsub("^%s+", ""):gsub("%s+$", ""))
 end
 
 function ns.Safe(text)
-  text = tostring(text or "")
-  text = text:gsub("|", "/")
-  text = text:gsub("[\r\n%z]", " ")
-  return text
+  local shown = ns.Plain(text)
+  if type(shown) ~= "string" then
+    return ""
+  end
+  shown = shown:gsub("|", "/")
+  shown = shown:gsub("[\r\n%z]", " ")
+  return shown
 end
 
 function ns.MyName()
-  local name = UnitName and UnitName("player") or nil
+  if type(UnitName) ~= "function" then
+    return nil
+  end
+  local name = ns.Plain(UnitName("player"))
   if type(name) ~= "string" or name == "" or name == "Unknown" then
     return nil
   end
@@ -48,7 +75,10 @@ function ns.MyName()
 end
 
 function ns.FactionCode()
-  local fac = UnitFactionGroup and UnitFactionGroup("player") or nil
+  local fac = nil
+  if type(UnitFactionGroup) == "function" then
+    fac = ns.Plain(UnitFactionGroup("player"))
+  end
   if fac == "Horde" then
     return "h"
   end
@@ -189,6 +219,29 @@ function ns.Repair()
       or type(review.stars) ~= "number"
     if bad or review.stars < 1 or review.stars > 5 then
       table.remove(ns.db.reviews, i)
+    end
+  end
+  for key, job in pairs(ns.db.jobs) do
+    if type(job) ~= "table" or (job.role ~= "buyer" and job.role ~= "seller") then
+      ns.db.jobs[key] = nil
+    end
+  end
+  for i = #ns.db.inbox, 1, -1 do
+    local item = ns.db.inbox[i]
+    if type(item) ~= "table" or type(item.who) ~= "string" or item.who == "" then
+      table.remove(ns.db.inbox, i)
+    else
+      if type(item.title) ~= "string" or item.title == "" then
+        item.title = "this job"
+      end
+      if type(item.id) ~= "string" then
+        item.id = ""
+      end
+    end
+  end
+  for name, at in pairs(ns.db.seen) do
+    if type(name) ~= "string" or type(at) ~= "number" then
+      ns.db.seen[name] = nil
     end
   end
 end
@@ -685,15 +738,14 @@ end
 SLASH_HIRELING1 = "/hireling"
 SLASH_HIRELING2 = "/hl"
 SlashCmdList.HIRELING = function(msg)
-  ns.Slash(msg)
+  local ok, err = pcall(ns.Slash, msg)
+  if not ok then
+    ns.Print("That command failed.")
+    ns.Log("Slash error: " .. tostring(ns.Plain(err) or "sealed"))
+  end
 end
 
-local events = CreateFrame("Frame")
-events:RegisterEvent("ADDON_LOADED")
-events:RegisterEvent("PLAYER_ENTERING_WORLD")
-events:RegisterEvent("PLAYER_REGEN_DISABLED")
-events:RegisterEvent("PLAYER_REGEN_ENABLED")
-events:SetScript("OnEvent", function(_, event, arg1, arg2)
+local function OnEvent(event, arg1, arg2)
   if event == "PLAYER_REGEN_DISABLED" then
     if ns.StashPopupsForCombat then
       ns.StashPopupsForCombat()
@@ -706,8 +758,14 @@ events:SetScript("OnEvent", function(_, event, arg1, arg2)
     end
     return
   end
+  if event == "PLAYER_LOGIN" then
+    if ns.Join then
+      ns.Join()
+    end
+    return
+  end
   if event == "ADDON_LOADED" then
-    if arg1 ~= ADDON then
+    if ns.IsSecret(arg1) or arg1 ~= ADDON then
       return
     end
     ns.InitDB()
@@ -715,8 +773,8 @@ events:SetScript("OnEvent", function(_, event, arg1, arg2)
     if ns.BuildUI then
       local ok, err = pcall(ns.BuildUI)
       if not ok then
-        ns.Print("The window failed to build: " .. tostring(err))
-        ns.Log("UI build error: " .. tostring(err))
+        ns.Print("The window failed to build: " .. tostring(ns.Plain(err) or "sealed"))
+        ns.Log("UI build error: " .. tostring(ns.Plain(err) or "sealed"))
       end
     end
     if ns.db.testMode and ns.LoadSample then
@@ -732,6 +790,10 @@ events:SetScript("OnEvent", function(_, event, arg1, arg2)
     ns.seenWorld = true
     local isLogin = arg1 == true
     local isReload = arg2 == true
+    if ns.IsSecret(arg1) or ns.IsSecret(arg2) then
+      isLogin = first
+      isReload = false
+    end
     if first or isLogin or isReload then
       if ns.db and ns.db.openOnLogin and ns.frame and not ns.frame:IsShown() then
         ns.frame:Show()
@@ -749,5 +811,18 @@ events:SetScript("OnEvent", function(_, event, arg1, arg2)
     elseif ns.UpdateStatus then
       ns.UpdateStatus()
     end
+  end
+end
+
+local events = CreateFrame("Frame")
+events:RegisterEvent("ADDON_LOADED")
+events:RegisterEvent("PLAYER_LOGIN")
+events:RegisterEvent("PLAYER_ENTERING_WORLD")
+events:RegisterEvent("PLAYER_REGEN_DISABLED")
+events:RegisterEvent("PLAYER_REGEN_ENABLED")
+events:SetScript("OnEvent", function(_, event, arg1, arg2)
+  local ok, err = pcall(OnEvent, event, arg1, arg2)
+  if not ok then
+    ns.Log("Event error: " .. tostring(ns.Plain(err) or "sealed"))
   end
 end)

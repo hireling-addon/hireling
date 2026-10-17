@@ -660,7 +660,7 @@ function ns.RefreshDetail()
   end
   ns.detail.note:SetText(note)
   ns.detail.action:Show()
-  if listing.owner == mine then
+  if listing.owner == mine and not job then
     ns.detail.action:SetLabel("Withdraw this listing")
     ns.detail.action.enabled = true
     ns.detail.action.onClick = function()
@@ -708,7 +708,7 @@ function ns.RefreshDetail()
   local side = job and job.role or nil
   local already = side and mine and ns.HasReview(key, side, mine)
   local finished = job and job.mineDone and job.theirDone
-  if finished and mine and listing.owner ~= mine and not already then
+  if finished and job and mine and not already then
     ns.detail.form:Show()
     ns.detail.formLabel:SetText(side == "seller" and "Your stars for the buyer" or "Your stars for the work")
     PaintStarPicker()
@@ -882,11 +882,23 @@ function ns.CommitReply()
 end
 
 function ns.InCombat()
-  if InCombatLockdown and InCombatLockdown() then
-    return true
+  if type(InCombatLockdown) == "function" then
+    local locked = InCombatLockdown()
+    if ns.IsSecret(locked) then
+      return true
+    end
+    if locked then
+      return true
+    end
   end
-  if UnitAffectingCombat and UnitAffectingCombat("player") then
-    return true
+  if type(UnitAffectingCombat) == "function" then
+    local fighting = UnitAffectingCombat("player")
+    if ns.IsSecret(fighting) then
+      return true
+    end
+    if fighting then
+      return true
+    end
   end
   return false
 end
@@ -1241,8 +1253,8 @@ function ns.UpdateDraftSize()
   end
   local packed = ns.PackListing(ns.DraftListing())
   local bytes = packed and #packed or 0
-  ns.post.bytes:SetText(bytes .. " / 255")
-  Color(ns.post.bytes, bytes > 255 and RUST or MUTED)
+  ns.post.bytes:SetText(bytes .. " / " .. tostring(ns.MAX_MSG or 250))
+  Color(ns.post.bytes, bytes > (ns.MAX_MSG or 250) and RUST or MUTED)
 end
 
 function ns.Publish()
@@ -1299,7 +1311,7 @@ function ns.Publish()
     updated = time(),
   }
   local packed = ns.PackListing(listing)
-  if not packed or #packed > 255 then
+  if not packed or #packed > (ns.MAX_MSG or 250) then
     ns.SetStatus("That post is too long for one channel message.")
     return
   end
