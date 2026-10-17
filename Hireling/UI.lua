@@ -778,7 +778,97 @@ function ns.CommitReply()
   reply:Hide()
 end
 
+function ns.InCombat()
+  if InCombatLockdown and InCombatLockdown() then
+    return true
+  end
+  if UnitAffectingCombat and UnitAffectingCombat("player") then
+    return true
+  end
+  return false
+end
+
+function ns.AlertCombat(text)
+  local played = false
+  if PlaySound then
+    if SOUNDKIT and SOUNDKIT.TELL_MESSAGE then
+      played = pcall(PlaySound, SOUNDKIT.TELL_MESSAGE, "Master")
+    end
+    if not played then
+      played = pcall(PlaySound, "TellMessage")
+    end
+  end
+  if played then
+    ns.SetStatus(text)
+    return
+  end
+  local mine = ns.MyName and ns.MyName() or nil
+  if mine and SendChatMessage then
+    local ok = pcall(SendChatMessage, "HIRELING: " .. text, "WHISPER", nil, mine)
+    if ok then
+      return
+    end
+  end
+  ns.Print("HIRELING: " .. text)
+end
+
+function ns.HoldPopup(kind, a, b, c, d)
+  ns.held = ns.held or {}
+  ns.held[#ns.held + 1] = { kind = kind, a = a, b = b, c = c, d = d }
+  if #ns.held > 8 then
+    table.remove(ns.held, 1)
+  end
+  local text
+  if kind == "ask" then
+    text = (a or "Someone") .. " asked about " .. (b or "a job") .. ". The box opens when combat ends."
+  else
+    text = "Answer from " .. (a or "someone") .. ". The box opens when combat ends."
+  end
+  ns.AlertCombat(text)
+end
+
+function ns.ReleasePopups()
+  if ns.InCombat() then
+    return
+  end
+  local held = ns.held or {}
+  ns.held = {}
+  local lastAsk = nil
+  local lastAnswer = nil
+  for index = 1, #held do
+    if held[index].kind == "ask" then
+      lastAsk = held[index]
+    else
+      lastAnswer = held[index]
+    end
+  end
+  if lastAsk then
+    ns.ShowReply(lastAsk.a, lastAsk.b)
+  end
+  if lastAnswer then
+    ns.ShowAnswer(lastAnswer.a, lastAnswer.b, lastAnswer.c, lastAnswer.d)
+  end
+end
+
+function ns.StashPopupsForCombat()
+  if ns.reply and ns.reply:IsShown() then
+    ns.held = ns.held or {}
+    ns.held[#ns.held + 1] = { kind = "ask", a = ns.reply.who, b = ns.reply.job }
+    ns.reply:Hide()
+  end
+  if ns.answer and ns.answer:IsShown() and ns.answer.payload then
+    local payload = ns.answer.payload
+    ns.held = ns.held or {}
+    ns.held[#ns.held + 1] = { kind = "answer", a = payload[1], b = payload[2], c = payload[3], d = payload[4] }
+    ns.answer:Hide()
+  end
+end
+
 function ns.ShowReply(who, title)
+  if ns.InCombat() then
+    ns.HoldPopup("ask", who, title or "this job")
+    return
+  end
   if not ns.reply then
     local reply = CreateFrame("Frame", "HirelingReply", UIParent, "BackdropTemplate")
     reply:SetSize(340, 210)
@@ -913,6 +1003,10 @@ function ns.ShowReply(who, title)
 end
 
 function ns.ShowAnswer(who, job, choice, other)
+  if ns.InCombat() then
+    ns.HoldPopup("answer", who, job, choice, other)
+    return
+  end
   if not ns.answer then
     local answer = CreateFrame("Frame", "HirelingAnswer", UIParent, "BackdropTemplate")
     answer:SetSize(340, 120)
@@ -944,6 +1038,7 @@ function ns.ShowAnswer(who, job, choice, other)
     ns.answer = answer
   end
   local line = ReplyLine(choice == "n" and "no" or (choice == "o" and "other" or "yes"), job or "this job", other)
+  ns.answer.payload = { who, job, choice, other }
   ns.answer.from:SetText("Answer from " .. who)
   ns.answer.body:SetText(line or "They replied.")
   ns.answer:Show()

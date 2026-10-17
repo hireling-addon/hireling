@@ -579,7 +579,21 @@ end
 local events = CreateFrame("Frame")
 events:RegisterEvent("ADDON_LOADED")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
+events:RegisterEvent("PLAYER_REGEN_DISABLED")
+events:RegisterEvent("PLAYER_REGEN_ENABLED")
 events:SetScript("OnEvent", function(_, event, arg1, arg2)
+  if event == "PLAYER_REGEN_DISABLED" then
+    if ns.StashPopupsForCombat then
+      ns.StashPopupsForCombat()
+    end
+    return
+  end
+  if event == "PLAYER_REGEN_ENABLED" then
+    if ns.ReleasePopups then
+      ns.ReleasePopups()
+    end
+    return
+  end
   if event == "ADDON_LOADED" then
     if arg1 ~= ADDON then
       return
