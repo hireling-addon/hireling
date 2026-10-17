@@ -1,0 +1,7 @@
+0.1.0
+- Square window, sharp type, and one acid accent instead of gold frames.
+- IBM Plex Sans in the addon, with the game font as a fallback.
+- Offers, bids, search, and 5-star reviews from both sides.
+- Syncs on a custom channel, not /say range.
+- Gold stays in the trade window.
+

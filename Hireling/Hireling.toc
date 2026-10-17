@@ -1,0 +1,15 @@
+## Interface: 16001
+## Title: Hireling
+## Notes: Commission board for offers and paid bids. Gold is paid in the trade window, not by this addon.
+## Author: Orion Wills
+## Version: 0.1.0
+## SavedVariables: HirelingDB
+## IconTexture: Interface\Icons\INV_Misc_Coin_01
+## Category: Auction & Economy
+## AddonCompartmentFunc: Hireling_CompartmentClick
+## AddonCompartmentFuncOnEnter: Hireling_CompartmentEnter
+## AddonCompartmentFuncOnLeave: Hireling_CompartmentLeave
+
+Core.lua
+Comms.lua
+UI.lua

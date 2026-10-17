@@ -1,0 +1,584 @@
+local _, ns = ...
+if type(ns) ~= "table" then
+  return
+end
+
+local SEP = "\031"
+local CATEGORIES = {
+  Craft = true,
+  Enchant = true,
+  Gather = true,
+  Group = true,
+  Portal = true,
+  Other = true,
+}
+
+function ns.Clean(text, maxLen)
+  text = tostring(text or "")
+  text = text:gsub("[%z\1-\31|]", " ")
+  text = text:gsub("%s+", " ")
+  text = ns.Trim(text)
+  if maxLen and #text > maxLen then
+    text = text:sub(1, maxLen)
+  end
+  return text
+end
+
+local function Split(text)
+  local out = {}
+  local startAt = 1
+  while true do
+    local from, to = string.find(text, SEP, startAt, true)
+    if not from then
+      out[#out + 1] = string.sub(text, startAt)
+      break
+    end
+    out[#out + 1] = string.sub(text, startAt, from - 1)
+    startAt = to + 1
+  end
+  return out
+end
+
+function ns.PackListing(listing)
+  local fee = math.floor(tonumber(listing.feeCopper) or 0)
+  if fee < 0 then
+    fee = 0
+  end
+  if fee > ns.MAX_FEE then
+    fee = ns.MAX_FEE
+  end
+  local note = ns.Clean(listing.note, 90)
+  local parts = {
+    "L",
+    ns.Clean(listing.id, 6),
+    listing.kind == "task" and "t" or "o",
+    listing.faction == "h" and "h" or "a",
+    CATEGORIES[listing.category] and listing.category or "Other",
+    tostring(fee),
+    ns.Clean(listing.zone, 18),
+    ns.Clean(listing.meet, 24),
+    ns.Clean(listing.title, 42),
+    note,
+  }
+  local message = table.concat(parts, SEP)
+  if #message > 255 then
+    local over = #message - 255
+    parts[10] = string.sub(parts[10], 1, math.max(0, #parts[10] - over))
+    message = table.concat(parts, SEP)
+  end
+  return message
+end
+
+function ns.UnpackListing(message, sender)
+  local parts = Split(message)
+  if parts[1] ~= "L" then
+    return nil
+  end
+  local id = parts[2] or ""
+  if not string.match(id, "^[a-z0-9]+$") or #id > 6 or #id < 4 then
+    return nil
+  end
+  local kind = parts[3] == "t" and "task" or (parts[3] == "o" and "offer" or nil)
+  local faction = parts[4] == "h" and "h" or (parts[4] == "a" and "a" or nil)
+  if not kind or not faction then
+    return nil
+  end
+  local fee = tonumber(parts[6])
+  if not fee then
+    return nil
+  end
+  fee = math.floor(fee)
+  if fee < 0 or fee > ns.MAX_FEE then
+    return nil
+  end
+  local category = parts[5] or "Other"
+  if not CATEGORIES[category] then
+    category = "Other"
+  end
+  return {
+    id = id,
+    owner = sender,
+    kind = kind,
+    faction = faction,
+    category = category,
+    feeCopper = fee,
+    zone = ns.Clean(parts[7], 18),
+    meet = ns.Clean(parts[8], 24),
+    title = ns.Clean(parts[9], 42),
+    note = ns.Clean(parts[10], 90),
+    ruleset = ns.Ruleset(),
+    updated = time(),
+  }
+end
+
+function ns.PackReview(review)
+  local owner, id = string.match(review.listingKey or "", "^([^:]+):([a-z0-9]+)$")
+  if not owner or not id then
+    return nil
+  end
+  local stars = math.floor(tonumber(review.stars) or 0)
+  if stars < 1 or stars > 5 then
+    return nil
+  end
+  local side = review.side == "seller" and "s" or (review.side == "buyer" and "b" or nil)
+  if not side then
+    return nil
+  end
+  return table.concat({
+    "R",
+    ns.Clean(owner, 12),
+    ns.Clean(id, 6),
+    side,
+    tostring(stars),
+    ns.Clean(review.about, 12),
+    ns.Clean(review.note, 80),
+  }, SEP)
+end
+
+function ns.PackJob(owner, id, role)
+  local code = role == "seller" and "s" or "b"
+  return table.concat({
+    "T",
+    ns.Clean(owner, 12),
+    ns.Clean(id, 6),
+    code,
+  }, SEP)
+end
+
+function ns.ChannelId()
+  local want = ns.ChannelName()
+  if GetChannelName then
+    local id = GetChannelName(want)
+    if type(id) == "number" and id > 0 then
+      return id
+    end
+  end
+  if GetChannelList then
+    local list = { GetChannelList() }
+    local index = 1
+    while index <= #list do
+      local id = list[index]
+      local name = list[index + 1]
+      if type(name) == "string" and string.lower(name) == string.lower(want) and type(id) == "number" then
+        return id
+      end
+      index = index + 3
+    end
+  end
+  return nil
+end
+
+function ns.Join()
+  local name = ns.ChannelName()
+  if ns.joinedName and ns.joinedName ~= name and LeaveChannelByName then
+    pcall(LeaveChannelByName, ns.joinedName)
+  end
+  local joined = false
+  local function try(fn)
+    if joined or not fn then
+      return
+    end
+    local ok = pcall(fn)
+    if ok then
+      joined = true
+    end
+  end
+  try(function()
+    if not C_ChatInfo or not C_ChatInfo.JoinPermanentChannel then
+      error("skip")
+    end
+    C_ChatInfo.JoinPermanentChannel(name)
+  end)
+  try(function()
+    if not JoinPermanentChannel then
+      error("skip")
+    end
+    JoinPermanentChannel(name)
+  end)
+  try(function()
+    if not JoinChannelByName then
+      error("skip")
+    end
+    JoinChannelByName(name)
+  end)
+  ns.joinedName = name
+  if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
+    local ok, result = pcall(C_ChatInfo.RegisterAddonMessagePrefix, ns.PREFIX)
+    ns.prefixRegistered = ok
+    ns.prefixResult = result
+    if not ok then
+      ns.Log("Prefix registration failed: " .. tostring(result))
+    end
+  else
+    ns.prefixRegistered = false
+  end
+  if not joined then
+    ns.Log("No channel join API answered for " .. name)
+  end
+  if ns.UpdateStatus then
+    ns.UpdateStatus()
+  end
+end
+
+local queue = {}
+local pumping = false
+
+local function ResultThrottled(result)
+  if Enum and Enum.SendAddonMessageResult and result == Enum.SendAddonMessageResult.AddonMessageThrottle then
+    return true
+  end
+  return tostring(result) == "AddonMessageThrottle"
+end
+
+local function Pump()
+  if pumping then
+    return
+  end
+  pumping = true
+  local function step()
+    if #queue == 0 then
+      pumping = false
+      return
+    end
+    local function again(delay, putBack)
+      if putBack then
+        table.insert(queue, 1, putBack)
+      end
+      if C_Timer and C_Timer.After then
+        C_Timer.After(delay, step)
+      else
+        pumping = false
+      end
+    end
+    if not C_ChatInfo or not C_ChatInfo.SendAddonMessage then
+      pumping = false
+      ns.Log("SendAddonMessage is missing. The queue was kept.")
+      return
+    end
+    local channelId = ns.ChannelId()
+    if not channelId then
+      ns.pumpWaits = (ns.pumpWaits or 0) + 1
+      if ns.pumpWaits > 8 then
+        pumping = false
+        ns.Log("Not on the channel yet. Saved posts go out on the next sync.")
+        if ns.SetStatus then
+          ns.SetStatus("Not on " .. ns.ChannelName() .. " yet. Use /hireling sync.")
+        end
+        return
+      end
+      again(1, nil)
+      return
+    end
+    ns.pumpWaits = 0
+    local message = table.remove(queue, 1)
+    local ok, first, second = pcall(C_ChatInfo.SendAddonMessage, ns.PREFIX, message, "CHANNEL", tostring(channelId))
+    if not ok then
+      ok, first, second = pcall(C_ChatInfo.SendAddonMessage, ns.PREFIX, message, "CHANNEL", channelId)
+    end
+    if not ok then
+      ns.Log("Send failed: " .. tostring(first))
+      again(2, message)
+      return
+    end
+    local result = second
+    if result == nil then
+      result = first
+    end
+    if ResultThrottled(result) then
+      again(1, message)
+      return
+    end
+    again(0.25, nil)
+  end
+  step()
+end
+
+function ns.SendTo(name, message)
+  if type(name) ~= "string" or name == "" or type(message) ~= "string" or message == "" or #message > 255 then
+    return false
+  end
+  if C_ChatInfo and C_ChatInfo.SendAddonMessage then
+    local ok, first, second = pcall(C_ChatInfo.SendAddonMessage, ns.PREFIX, message, "WHISPER", name)
+    if ok then
+      local result = second
+      if result == nil then
+        result = first
+      end
+      if not ResultThrottled(result) then
+        return true
+      end
+    end
+  end
+  return ns.Send(message)
+end
+
+function ns.Send(message)
+  ns.pumpWaits = 0
+  if type(message) ~= "string" or message == "" then
+    return false
+  end
+  if #message > 255 then
+    ns.Log("Blocked a " .. #message .. "-byte message.")
+    return false
+  end
+  if #queue >= 60 then
+    table.remove(queue, 1)
+  end
+  queue[#queue + 1] = message
+  Pump()
+  return true
+end
+
+function ns.QueueCount()
+  return #queue
+end
+
+local function SendOwn(skipHello)
+  local mine = ns.MyName()
+  if not mine then
+    return
+  end
+  if not skipHello then
+    ns.Send("H")
+  end
+  local listingsSent = 0
+  for _, listing in pairs(ns.db.listings) do
+    if listing.owner == mine and listing.localOnly ~= true and listing.ruleset == ns.Ruleset() and listingsSent < 12 then
+      ns.Send(ns.PackListing(listing))
+      listingsSent = listingsSent + 1
+    end
+  end
+  local reviewsSent = 0
+  for i = 1, #ns.db.reviews do
+    local review = ns.db.reviews[i]
+    if review.author == mine and review.localOnly ~= true and reviewsSent < 12 then
+      local packed = ns.PackReview(review)
+      if packed and #packed <= 255 then
+        ns.Send(packed)
+        reviewsSent = reviewsSent + 1
+      end
+    end
+  end
+end
+
+function ns.Announce()
+  if not ns.db then
+    return
+  end
+  if not ns.ChannelId() then
+    ns.joinTries = (ns.joinTries or 0) + 1
+    ns.Join()
+    if ns.joinTries <= 5 and C_Timer and C_Timer.After then
+      C_Timer.After(2, ns.Announce)
+      if ns.UpdateStatus then
+        ns.UpdateStatus()
+      end
+      return
+    end
+    ns.Log("Could not join " .. ns.ChannelName() .. " yet.")
+    if ns.SetStatus then
+      ns.SetStatus("Not on " .. ns.ChannelName() .. " yet. Use /hireling sync.")
+    end
+    return
+  end
+  ns.joinTries = 0
+  SendOwn(false)
+  ns.Log("Announced on " .. ns.ChannelName() .. ".")
+  if ns.UpdateStatus then
+    ns.UpdateStatus()
+  end
+end
+
+function ns.ReplyHello(sender)
+  local mine = ns.MyName()
+  if not mine or sender == mine or not ns.db then
+    return
+  end
+  ns.replied = ns.replied or {}
+  local now = time()
+  if ns.replied[sender] and now - ns.replied[sender] < 60 then
+    return
+  end
+  ns.replied[sender] = now
+  SendOwn(true)
+end
+
+local function ShortName(sender)
+  if type(sender) ~= "string" then
+    return nil
+  end
+  local name = string.match(sender, "^([^%-]+)") or sender
+  if #name < 2 or #name > 24 or string.find(name, SEP, 1, true) then
+    return nil
+  end
+  return name
+end
+
+local function OnAddonMessage(prefix, message, distribution, sender, _, _, _, channelName)
+  if prefix ~= ns.PREFIX or type(message) ~= "string" or not ns.db then
+    return
+  end
+  ns.lastDist = tostring(distribution)
+  ns.lastChannelName = tostring(channelName)
+  local direct = distribution == "WHISPER"
+  if not direct and distribution ~= "CHANNEL" then
+    return
+  end
+  if not direct and type(channelName) == "string" and channelName ~= "" and string.lower(channelName) ~= string.lower(ns.ChannelName()) then
+    return
+  end
+  local who = ShortName(sender)
+  if not who then
+    return
+  end
+  local opcode = string.sub(message, 1, 1)
+  if opcode == "Q" or opcode == "A" then
+    local parts = Split(message)
+    local target = parts[2] or ""
+    if not direct and target ~= ns.MyName() then
+      return
+    end
+    if who == ns.MyName() then
+      return
+    end
+    if opcode == "Q" and ns.ShowReply then
+      ns.ShowReply(who, parts[4] or "this job")
+    elseif opcode == "A" and ns.ShowAnswer then
+      ns.ShowAnswer(who, parts[3] or "this job", parts[4] or "y", parts[5] or "")
+    end
+    return
+  end
+  if not direct and opcode == "H" then
+    ns.Log(who .. " asked for a sync.")
+    ns.ReplyHello(who)
+    return
+  end
+  if opcode == "L" then
+    local listing = ns.UnpackListing(message, who)
+    if not listing then
+      return
+    end
+    if listing.owner == ns.MyName() then
+      listing.localOnly = false
+    end
+    local count = 0
+    for _ in pairs(ns.db.listings) do
+      count = count + 1
+    end
+    local key = ns.Key(listing.owner, listing.id)
+    if count >= 200 and not ns.db.listings[key] then
+      return
+    end
+    ns.UpsertListing(listing)
+    return
+  end
+  if opcode == "R" then
+    local parts = Split(message)
+    local owner = ns.Clean(parts[2], 12)
+    local id = parts[3] or ""
+    if owner == "" or not string.match(id, "^[a-z0-9]+$") then
+      return
+    end
+    local side = parts[4] == "s" and "seller" or (parts[4] == "b" and "buyer" or nil)
+    local stars = tonumber(parts[5])
+    if not side or not stars then
+      return
+    end
+    ns.AddReview({
+      listingKey = ns.Key(owner, id),
+      side = side,
+      author = who,
+      about = ns.Clean(parts[6], 12),
+      note = ns.Clean(parts[7], 80),
+      stars = math.floor(stars),
+      updated = time(),
+    })
+    return
+  end
+  if opcode == "T" then
+    local parts = Split(message)
+    local owner = ns.Clean(parts[2], 12)
+    local id = parts[3] or ""
+    if owner == "" or not string.match(id, "^[a-z0-9]+$") then
+      return
+    end
+    local role = parts[4] == "s" and "seller" or (parts[4] == "b" and "buyer" or nil)
+    if not role then
+      return
+    end
+    local key = ns.Key(owner, id)
+    local mine = ns.MyName()
+    if who == mine then
+      ns.RememberJob(key, role, owner)
+    elseif owner == mine then
+      local myRole = role == "buyer" and "seller" or "buyer"
+      ns.RememberJob(key, myRole, who)
+    end
+    return
+  end
+  if opcode == "X" then
+    local parts = Split(message)
+    local id = parts[2] or ""
+    if string.match(id, "^[a-z0-9]+$") then
+      ns.db.listings[ns.Key(who, id)] = nil
+      if ns.Refresh then
+        ns.Refresh()
+      end
+    end
+  end
+end
+
+if CreateFrame then
+  local listener = CreateFrame("Frame")
+  listener:RegisterEvent("CHAT_MSG_ADDON")
+  listener:SetScript("OnEvent", function(_, _, ...)
+    local ok, err = pcall(OnAddonMessage, ...)
+    if not ok then
+      ns.Log("Message error: " .. tostring(err))
+    end
+  end)
+end
+
+function ns.SelfTest()
+  local issues = {}
+  local function add(text)
+    issues[#issues + 1] = text
+  end
+  local listing = {
+    id = "abc123",
+    kind = "task",
+    faction = "a",
+    category = "Enchant",
+    feeCopper = ns.MAX_FEE,
+    zone = string.rep("Z", 40),
+    meet = string.rep("M", 40),
+    title = string.rep("T", 80),
+    note = string.rep("N", 200) .. "|cffff0000|Hitem:123|h[x]|h|r",
+  }
+  local packed = ns.PackListing(listing)
+  if type(packed) ~= "string" or #packed > 255 then
+    add("listing packet is " .. tostring(packed and #packed or "nil") .. " bytes")
+  end
+  if packed and string.find(packed, "|", 1, true) then
+    add("listing packet still contains a color code")
+  end
+  local back = packed and ns.UnpackListing(packed, "Tester") or nil
+  if not back or back.title ~= string.rep("T", 42) or back.zone ~= string.rep("Z", 18) or back.kind ~= "task" then
+    add("listing packet did not round-trip")
+  end
+  local review = ns.PackReview({
+    listingKey = "Tester:abc123",
+    side = "buyer",
+    stars = 2,
+    about = "LongerThanTwelve",
+    note = string.rep("R", 120),
+  })
+  if not review or #review > 255 then
+    add("review packet is too large")
+  end
+  local bad = ns.UnpackListing("L\031no\031o\031a\031Craft\0311\031Zone\031Meet\031Title\031Note", "Tester")
+  if bad then
+    add("a bad listing id was accepted")
+  end
+  return issues
+end
