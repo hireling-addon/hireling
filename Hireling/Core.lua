@@ -141,6 +141,12 @@ function ns.InitDB()
   if ns.db.testMode ~= true then
     ns.db.testMode = false
   end
+  if ns.db.sound ~= false then
+    ns.db.sound = true
+  end
+  if ns.db.openOnLogin ~= true then
+    ns.db.openOnLogin = false
+  end
   ns.Repair()
 end
 
@@ -641,6 +647,9 @@ events:SetScript("OnEvent", function(_, event, arg1, arg2)
     local isLogin = arg1 == true
     local isReload = arg2 == true
     if first or isLogin or isReload then
+      if ns.db and ns.db.openOnLogin and ns.frame and not ns.frame:IsShown() then
+        ns.frame:Show()
+      end
       local function announce()
         if ns.Announce then
           ns.Announce()

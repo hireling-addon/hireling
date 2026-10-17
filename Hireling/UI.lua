@@ -280,6 +280,9 @@ function ns.UpdateStatus()
   if ns.testButton then
     ns.testButton:SetActive(ns.db and ns.db.testMode == true)
   end
+  if ns.optionsButton then
+    ns.optionsButton:SetActive(ns.page == "options")
+  end
 end
 
 local function AverageText(avg, count)
@@ -821,17 +824,20 @@ function ns.InCombat()
   return false
 end
 
-function ns.AlertCombat(text)
-  local played = false
-  if PlaySound then
-    if SOUNDKIT and SOUNDKIT.TELL_MESSAGE then
-      played = pcall(PlaySound, SOUNDKIT.TELL_MESSAGE, "Master")
-    end
-    if not played then
-      played = pcall(PlaySound, "TellMessage")
+function ns.PlayTell()
+  if not ns.db or ns.db.sound == false or not PlaySound then
+    return false
+  end
+  if SOUNDKIT and SOUNDKIT.TELL_MESSAGE then
+    if pcall(PlaySound, SOUNDKIT.TELL_MESSAGE, "Master") then
+      return true
     end
   end
-  if played then
+  return pcall(PlaySound, "TellMessage")
+end
+
+function ns.AlertCombat(text)
+  if ns.PlayTell() then
     ns.SetStatus(text)
     return
   end
@@ -1033,6 +1039,7 @@ function ns.ShowReply(who, title)
   reply.body:SetText("Do you still want " .. reply.job .. "?")
   PaintReplyChoice(reply)
   reply:Show()
+  ns.PlayTell()
 end
 
 function ns.ShowAnswer(who, job, choice, other)
@@ -1075,6 +1082,7 @@ function ns.ShowAnswer(who, job, choice, other)
   ns.answer.from:SetText("Answer from " .. who)
   ns.answer.body:SetText(line or "They replied.")
   ns.answer:Show()
+  ns.PlayTell()
 end
 
 function ns.TakeListing(listing, role)
@@ -1351,9 +1359,55 @@ function ns.RunCheck()
   end
 end
 
+function ns.SetTheme(name)
+  if not PALETTES[name] or not ns.db then
+    return
+  end
+  ns.db.theme = name
+  ns.ApplyPalette(name)
+  local function recolor(frame)
+    if not frame then
+      return
+    end
+    if frame.hirelingFill and frame.SetBackdropColor then
+      local fill = frame.hirelingFill
+      frame:SetBackdropColor(fill[1], fill[2], fill[3], 1)
+    end
+    if frame.hirelingBorder and frame.SetBackdropBorderColor then
+      local edge = frame.hirelingBorder
+      frame:SetBackdropBorderColor(edge[1], edge[2], edge[3], 1)
+    end
+    if frame.GetRegions then
+      local regions = { frame:GetRegions() }
+      for index = 1, #regions do
+        local region = regions[index]
+        if region and region.hirelingColor and region.SetTextColor then
+          local color = region.hirelingColor
+          region:SetTextColor(color[1], color[2], color[3], 1)
+        end
+      end
+    end
+    if frame.GetChildren then
+      local children = { frame:GetChildren() }
+      for index = 1, #children do
+        recolor(children[index])
+      end
+    end
+  end
+  recolor(ns.frame)
+  recolor(ns.reply)
+  recolor(ns.answer)
+  if ns.RefreshOptions then
+    ns.RefreshOptions()
+  end
+end
+
 function ns.BuildUI()
   if ns.frame then
     return
+  end
+  if ns.ApplyPalette and ns.ThemeName then
+    ns.ApplyPalette(ns.ThemeName())
   end
   ns.edits = {}
   ns.filterKind = "all"
@@ -1417,12 +1471,16 @@ function ns.BuildUI()
   title:SetPoint("LEFT", 12, 0)
   title:SetText("Hireling")
   Color(title, GOLD)
-  local testBtn = ClickButton(drag, "Test", 64, 18)
-  testBtn:SetPoint("RIGHT", -4, 0)
-  testBtn.onClick = function()
-    ns.SetTestMode(not (ns.db and ns.db.testMode))
+  local optionsBtn = ClickButton(drag, "Options", 72, 18)
+  optionsBtn:SetPoint("RIGHT", -4, 0)
+  optionsBtn.onClick = function()
+    if ns.page == "options" then
+      ns.ShowPage("board")
+    else
+      ns.ShowPage("options")
+    end
   end
-  ns.testButton = testBtn
+  ns.optionsButton = optionsBtn
   ns.drag = drag
 
   local tabBar = CreateFrame("Frame", nil, frame)
@@ -1721,6 +1779,120 @@ function ns.BuildUI()
     log = log,
   }
 
+  local options = Page()
+  ns.pages.options = options
+  local optionsBack = ClickButton(options, "Back", 70, 22)
+  optionsBack:SetPoint("TOPLEFT", 0, 0)
+  optionsBack.onClick = function()
+    ns.ShowPage("board")
+  end
+  local optionsTitle = Font(options, false)
+  optionsTitle:SetPoint("LEFT", optionsBack, "RIGHT", 8, 0)
+  optionsTitle:SetText("Options")
+  Color(optionsTitle, GOLD)
+  local function OptionRow(label, y, getter, setter)
+    local text = Font(options, true)
+    text:SetPoint("TOPLEFT", 0, y)
+    text:SetWidth(400)
+    text:SetJustifyH("LEFT")
+    text:SetWordWrap(false)
+    text:SetText(label)
+    Color(text, PAPER)
+    local button = ClickButton(options, "Off", 72, 22)
+    button:SetPoint("TOPRIGHT", 0, y)
+    button.refresh = function()
+      local on = getter()
+      button:SetLabel(on and "On" or "Off")
+      button:SetActive(on)
+    end
+    button.onClick = function()
+      setter(not getter())
+      if ns.RefreshOptions then
+        ns.RefreshOptions()
+      end
+    end
+    return button
+  end
+  local testRow = OptionRow("Test mode. Sample cards stay on this computer.", -36, function()
+    return ns.db and ns.db.testMode == true
+  end, function(on)
+    ns.SetTestMode(on)
+  end)
+  local soundRow = OptionRow("Sound when an ask or answer arrives.", -66, function()
+    return not ns.db or ns.db.sound ~= false
+  end, function(on)
+    ns.db.sound = on and true or false
+  end)
+  local loginRow = OptionRow("Open Hireling when you log in.", -96, function()
+    return ns.db and ns.db.openOnLogin == true
+  end, function(on)
+    ns.db.openOnLogin = on and true or false
+  end)
+  local themeLabel = Font(options, true)
+  themeLabel:SetPoint("TOPLEFT", 0, -132)
+  themeLabel:SetText("Theme")
+  Color(themeLabel, PAPER)
+  local themeButtons = {}
+  local themePrev = nil
+  for index = 1, #THEME_ORDER do
+    local name = THEME_ORDER[index]
+    local button = ClickButton(options, THEME_LABEL[name], 88, 22)
+    button.themeName = name
+    if index == 1 then
+      button:SetPoint("TOPLEFT", 0, -152)
+    else
+      button:SetPoint("TOPLEFT", themePrev, "TOPRIGHT", 6, 0)
+    end
+    button.onClick = function(self)
+      ns.SetTheme(self.themeName)
+    end
+    themeButtons[index] = button
+    themePrev = button
+  end
+  local scaleLabel = Font(options, true)
+  scaleLabel:SetPoint("TOPLEFT", 0, -186)
+  scaleLabel:SetText("Window scale")
+  Color(scaleLabel, PAPER)
+  local scaleValue = Font(options, false)
+  scaleValue:SetPoint("TOPLEFT", 110, -184)
+  Color(scaleValue, GOLD)
+  local scaleDown = ClickButton(options, "-", 28, 22)
+  scaleDown:SetPoint("TOPLEFT", 170, -186)
+  scaleDown.onClick = function()
+    ns.db.scale = (tonumber(ns.db.scale) or 1) - 0.1
+    ns.ApplyScale()
+    ns.RefreshOptions()
+  end
+  local scaleUp = ClickButton(options, "+", 28, 22)
+  scaleUp:SetPoint("LEFT", scaleDown, "RIGHT", 4, 0)
+  scaleUp.onClick = function()
+    ns.db.scale = (tonumber(ns.db.scale) or 1) + 0.1
+    ns.ApplyScale()
+    ns.RefreshOptions()
+  end
+  ns.options = {
+    test = testRow,
+    sound = soundRow,
+    login = loginRow,
+    themes = themeButtons,
+    scale = scaleValue,
+  }
+  function ns.RefreshOptions()
+    if not ns.options then
+      return
+    end
+    ns.options.test.refresh()
+    ns.options.sound.refresh()
+    ns.options.login.refresh()
+    local theme = ns.ThemeName and ns.ThemeName() or "acid"
+    for index = 1, #ns.options.themes do
+      local button = ns.options.themes[index]
+      button:SetActive(button.themeName == theme)
+    end
+    local scale = tonumber(ns.db and ns.db.scale) or 1
+    ns.options.scale:SetText(string.format("%.1f", scale))
+  end
+
   local detail = Page()
   ns.pages.detail = detail
   local back = ClickButton(detail, "Back", 70, 22)
@@ -1848,6 +2020,9 @@ function ns.BuildUI()
     for key, button in pairs(ns.tabs) do
       button:SetActive(key == name)
     end
+    if ns.optionsButton then
+      ns.optionsButton:SetActive(name == "options")
+    end
     if frame:IsShown() then
       ns.Refresh()
     end
@@ -1866,6 +2041,8 @@ function ns.BuildUI()
       ns.RefreshDetail()
     elseif ns.page == "channel" then
       ns.RefreshChannel()
+    elseif ns.page == "options" then
+      ns.RefreshOptions()
     end
   end
 
