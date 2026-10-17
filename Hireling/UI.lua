@@ -324,6 +324,13 @@ function ns.Filtered(includeJobs)
     end
   end
   table.sort(out, function(a, b)
+    if ns.sortMode == "payout" then
+      local leftFee = a.feeCopper or 0
+      local rightFee = b.feeCopper or 0
+      if leftFee ~= rightFee then
+        return leftFee > rightFee
+      end
+    end
     local left = a.updated or 0
     local right = b.updated or 0
     if left ~= right then
@@ -525,6 +532,8 @@ function ns.RefreshBoard()
   ns.board.all:SetActive(ns.filterKind == "all")
   ns.board.offers:SetActive(ns.filterKind == "offer")
   ns.board.bids:SetActive(ns.filterKind == "task")
+  ns.board.recent:SetActive(ns.sortMode ~= "payout")
+  ns.board.payout:SetActive(ns.sortMode == "payout")
   LayoutRows(ns.board.scroll, ns.board.rows, listings)
   if #listings == 0 then
     ns.board.empty:Show()
@@ -1324,6 +1333,7 @@ function ns.BuildUI()
   end
   ns.edits = {}
   ns.filterKind = "all"
+  ns.sortMode = "recent"
   ns.searchText = ""
   ns.page = "board"
   ns.reviewStars = 5
@@ -1481,8 +1491,20 @@ function ns.BuildUI()
     ns.filterKind = "task"
     ns.RefreshBoard()
   end
+  local recent = ClickButton(board, "Recent", 260, 22)
+  recent:SetPoint("TOPLEFT", all, "BOTTOMLEFT", 0, -4)
+  local payout = ClickButton(board, "Payout", 260, 22)
+  payout:SetPoint("TOPLEFT", recent, "TOPRIGHT", 4, 0)
+  recent.onClick = function()
+    ns.sortMode = "recent"
+    ns.RefreshBoard()
+  end
+  payout.onClick = function()
+    ns.sortMode = "payout"
+    ns.RefreshBoard()
+  end
   local boardScroll = ScrollArea(board)
-  boardScroll:SetPoint("TOPLEFT", all, "BOTTOMLEFT", 0, -6)
+  boardScroll:SetPoint("TOPLEFT", recent, "BOTTOMLEFT", 0, -6)
   boardScroll:SetPoint("BOTTOMRIGHT", board, "BOTTOMRIGHT", 0, 0)
   local empty = CreateFrame("Frame", nil, board)
   empty:SetAllPoints(boardScroll)
@@ -1498,6 +1520,8 @@ function ns.BuildUI()
     all = all,
     offers = offers,
     bids = bids,
+    recent = recent,
+    payout = payout,
     empty = empty,
   }
 
