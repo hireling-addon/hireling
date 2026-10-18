@@ -178,6 +178,88 @@ function ns.ChannelId()
   return nil
 end
 
+function ns.TradeChannelId()
+  local function isTrade(name)
+    name = ns.Plain(name)
+    if type(name) ~= "string" then
+      return false
+    end
+    name = string.lower(name)
+    return name == "trade" or string.find(name, "trade", 1, true) == 1
+  end
+  if type(GetChannelName) == "function" then
+    local guesses = { "Trade", "Trade - City" }
+    for index = 1, #guesses do
+      local id = GetChannelName(guesses[index])
+      if not ns.IsSecret(id) and type(id) == "number" and id > 0 then
+        return id
+      end
+    end
+  end
+  if type(GetChannelList) == "function" then
+    local ok, list = pcall(function()
+      return { GetChannelList() }
+    end)
+    if ok and type(list) == "table" then
+      local index = 1
+      while index <= #list do
+        local id = list[index]
+        if not ns.IsSecret(id) and type(id) == "number" and id > 0 and isTrade(list[index + 1]) then
+          return id
+        end
+        index = index + 3
+      end
+    end
+  end
+  return nil
+end
+
+ns.TRADE_AD = "Post a job. Name the fee. Hireling is the commission board. On CurseForge."
+
+function ns.Advertise()
+  if not ns.db then
+    return
+  end
+  local now = time()
+  local last = ns.db.lastTradeAd
+  if type(last) == "number" and now - last < 120 then
+    local wait = 120 - (now - last)
+    if ns.SetStatus then
+      ns.SetStatus("Wait " .. wait .. "s before advertising again.")
+    end
+    return
+  end
+  local id = ns.TradeChannelId()
+  if not id then
+    if ns.SetStatus then
+      ns.SetStatus("Trade is not joined. Stand in a city and try again.")
+    end
+    return
+  end
+  local sent = false
+  if C_ChatInfo and C_ChatInfo.SendChatMessage then
+    sent = pcall(C_ChatInfo.SendChatMessage, ns.TRADE_AD, "CHANNEL", nil, id)
+    if not sent then
+      sent = pcall(C_ChatInfo.SendChatMessage, ns.TRADE_AD, "CHANNEL", nil, tostring(id))
+    end
+  end
+  if not sent and SendChatMessage then
+    sent = pcall(SendChatMessage, ns.TRADE_AD, "CHANNEL", nil, id)
+    if not sent then
+      sent = pcall(SendChatMessage, ns.TRADE_AD, "CHANNEL", nil, tostring(id))
+    end
+  end
+  if sent then
+    ns.db.lastTradeAd = now
+    if ns.SetStatus then
+      ns.SetStatus("Said it in trade.")
+    end
+    ns.Log("Advertised in trade.")
+  elseif ns.SetStatus then
+    ns.SetStatus("Trade did not take the message.")
+  end
+end
+
 function ns.Join()
   local name = ns.ChannelName()
   if ns.joinedName and ns.joinedName ~= name and LeaveChannelByName then

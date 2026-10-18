@@ -1,4 +1,5 @@
 0.1.1
+- Advertise in trade posts one line and says the addon is on CurseForge.
 - Here, claimed jobs, an inbox, a craft filter, mark done, and standing offers.
 - Sealed client values, bad saved data, and leaked addon packets are handled the same way as Guild Bench and Leyword.
 - Channel messages stop at 250 bytes.

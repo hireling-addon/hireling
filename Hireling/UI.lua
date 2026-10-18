@@ -1887,6 +1887,13 @@ function ns.BuildUI()
       ns.Announce()
     end
   end
+  local advertise = ClickButton(channel, "Advertise in trade", 180, 22)
+  advertise:SetPoint("LEFT", sync, "RIGHT", 6, 0)
+  advertise.onClick = function()
+    if ns.Advertise then
+      ns.Advertise()
+    end
+  end
   local channelScroll, channelChild = ScrollArea(channel)
   channelScroll:SetPoint("TOPLEFT", sync, "BOTTOMLEFT", 0, -8)
   channelScroll:SetPoint("BOTTOMRIGHT", channel, "BOTTOMRIGHT", 0, 0)
