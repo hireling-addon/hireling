@@ -1,7 +1,13 @@
+0.1.1
+- Here, claimed jobs, an inbox, a craft filter, mark done, and standing offers.
+- Sealed client values, bad saved data, and leaked addon packets are handled the same way as Guild Bench and Leyword.
+- Channel messages stop at 250 bytes.
+
 0.1.0
 - Square window, sharp type, and one acid accent instead of gold frames.
 - IBM Plex Sans in the addon, with the game font as a fallback.
 - Offers, bids, search, and 5-star reviews from both sides.
 - Syncs on a custom channel, not /say range.
 - Gold stays in the trade window.
+
 
