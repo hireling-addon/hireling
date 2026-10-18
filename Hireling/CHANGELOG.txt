@@ -1,3 +1,6 @@
+0.1.2
+- The Hireling channel waits for General and Trade, then moves itself to channel 6.
+
 0.1.1
 - Advertise in trade posts one line and says the addon is on CurseForge.
 - Here, claimed jobs, an inbox, a craft filter, mark done, and standing offers.

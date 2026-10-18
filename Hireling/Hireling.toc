@@ -2,7 +2,7 @@
 ## Title: Hireling
 ## Notes: Commission board for offers and paid bids. Gold is paid in the trade window, not by this addon.
 ## Author: Orion Wills
-## Version: 0.1.1
+## Version: 0.1.2
 ## SavedVariables: HirelingDB
 ## IconTexture: Interface\Icons\INV_Misc_Coin_01
 ## Category: Auction & Economy

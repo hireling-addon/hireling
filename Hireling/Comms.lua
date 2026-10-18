@@ -310,6 +310,110 @@ function ns.Join()
   if ns.UpdateStatus then
     ns.UpdateStatus()
   end
+  if joined and ns.SchedulePark then
+    ns.SchedulePark()
+  end
+end
+
+ns.CHANNEL_SLOT = 6
+
+function ns.HasDefaultChannel()
+  if type(GetChannelList) ~= "function" then
+    return false
+  end
+  local ok, list = pcall(function()
+    return { GetChannelList() }
+  end)
+  if not ok or type(list) ~= "table" then
+    return false
+  end
+  local index = 1
+  while index <= #list do
+    local name = ns.Plain(list[index + 1])
+    if type(name) == "string" then
+      name = string.lower(name)
+      if string.find(name, "general", 1, true) == 1 or string.find(name, "trade", 1, true) == 1 then
+        return true
+      end
+    end
+    index = index + 3
+  end
+  return false
+end
+
+function ns.ParkChannel()
+  local swap = C_ChatInfo and C_ChatInfo.SwapChatChannelsByChannelIndex
+  if type(swap) ~= "function" then
+    return
+  end
+  local index = ns.ChannelId()
+  if not index or index >= ns.CHANNEL_SLOT then
+    return
+  end
+  local guard = 0
+  while index < ns.CHANNEL_SLOT and guard < 8 do
+    guard = guard + 1
+    local ok = pcall(swap, index, index + 1)
+    if not ok then
+      break
+    end
+    local nextIndex = ns.ChannelId()
+    if not nextIndex or nextIndex <= index then
+      break
+    end
+    index = nextIndex
+  end
+  if ns.UpdateStatus then
+    ns.UpdateStatus()
+  end
+end
+
+function ns.SchedulePark()
+  if ns.parkTimer then
+    return
+  end
+  ns.parkTimer = true
+  local function run()
+    ns.parkTimer = false
+    ns.ParkChannel()
+  end
+  if C_Timer and C_Timer.After then
+    C_Timer.After(0.4, run)
+  else
+    run()
+  end
+end
+
+function ns.JoinAfterDefaults()
+  if ns.ChannelId and ns.ChannelId() then
+    ns.SchedulePark()
+    return
+  end
+  if ns.waitingForDefaults then
+    return
+  end
+  ns.waitingForDefaults = true
+  ns.defaultWaits = 0
+  local function attempt()
+    ns.defaultWaits = (ns.defaultWaits or 0) + 1
+    if ns.HasDefaultChannel() or ns.defaultWaits >= 6 then
+      ns.waitingForDefaults = false
+      ns.Join()
+      return
+    end
+    if C_Timer and C_Timer.After then
+      C_Timer.After(1.5, attempt)
+    else
+      ns.waitingForDefaults = false
+      ns.Join()
+    end
+  end
+  if C_Timer and C_Timer.After then
+    C_Timer.After(1.5, attempt)
+  else
+    ns.waitingForDefaults = false
+    ns.Join()
+  end
 end
 
 local queue = {}
@@ -464,7 +568,7 @@ function ns.Announce()
   end
   if not ns.ChannelId() then
     ns.joinTries = (ns.joinTries or 0) + 1
-    ns.Join()
+    ns.JoinAfterDefaults()
     if ns.joinTries <= 5 and C_Timer and C_Timer.After then
       C_Timer.After(2, ns.Announce)
       if ns.UpdateStatus then

@@ -5,7 +5,7 @@ end
 
 ns.ADDON = ADDON
 ns.PREFIX = "Hireling"
-ns.VERSION = "0.1.1"
+ns.VERSION = "0.1.2"
 ns.WEEK = 7 * 24 * 60 * 60
 ns.MAX_FEE = 5000 * 10000
 ns.MAX_MSG = 250
@@ -758,8 +758,17 @@ local function OnEvent(event, arg1, arg2)
     end
     return
   end
+  if event == "CHANNEL_UI_UPDATE" then
+    local id = ns.ChannelId and ns.ChannelId() or nil
+    if id and id < (ns.CHANNEL_SLOT or 6) and ns.SchedulePark then
+      ns.SchedulePark()
+    end
+    return
+  end
   if event == "PLAYER_LOGIN" then
-    if ns.Join then
+    if ns.JoinAfterDefaults then
+      ns.JoinAfterDefaults()
+    elseif ns.Join then
       ns.Join()
     end
     return
@@ -783,8 +792,10 @@ local function OnEvent(event, arg1, arg2)
     return
   end
   if event == "PLAYER_ENTERING_WORLD" then
-    if ns.Join and (not ns.ChannelId or not ns.ChannelId()) then
-      ns.Join()
+    if ns.JoinAfterDefaults and (not ns.ChannelId or not ns.ChannelId()) then
+      ns.JoinAfterDefaults()
+    elseif ns.SchedulePark then
+      ns.SchedulePark()
     end
     local first = not ns.seenWorld
     ns.seenWorld = true
@@ -817,6 +828,7 @@ end
 local events = CreateFrame("Frame")
 events:RegisterEvent("ADDON_LOADED")
 events:RegisterEvent("PLAYER_LOGIN")
+events:RegisterEvent("CHANNEL_UI_UPDATE")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:RegisterEvent("PLAYER_REGEN_DISABLED")
 events:RegisterEvent("PLAYER_REGEN_ENABLED")
