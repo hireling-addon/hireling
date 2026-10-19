@@ -5,7 +5,7 @@ end
 
 ns.ADDON = ADDON
 ns.PREFIX = "Hireling"
-ns.VERSION = "0.1.2"
+ns.VERSION = "0.1.3"
 ns.WEEK = 7 * 24 * 60 * 60
 ns.MAX_FEE = 5000 * 10000
 ns.MAX_MSG = 250
@@ -179,6 +179,12 @@ function ns.InitDB()
   end
   if ns.db.sound ~= false then
     ns.db.sound = true
+  end
+  if type(ns.db.soundId) ~= "string" or ns.db.soundId == "" then
+    ns.db.soundId = "tell"
+  end
+  if type(ns.db.minimap) ~= "table" then
+    ns.db.minimap = { hide = false }
   end
   if ns.db.openOnLogin ~= true then
     ns.db.openOnLogin = false
@@ -452,6 +458,60 @@ function ns.MarkDone(key, fromOther)
   if ns.Refresh then
     ns.Refresh()
   end
+end
+
+function ns.VersionNewer(remote, localVersion)
+  local function parts(text)
+    local major, minor, patch = string.match(tostring(text or ""), "(%d+)%.(%d+)%.(%d+)")
+    return tonumber(major) or 0, tonumber(minor) or 0, tonumber(patch) or 0
+  end
+  local remoteMajor, remoteMinor, remotePatch = parts(remote)
+  local localMajor, localMinor, localPatch = parts(localVersion or ns.VERSION)
+  if remoteMajor ~= localMajor then
+    return remoteMajor > localMajor
+  end
+  if remoteMinor ~= localMinor then
+    return remoteMinor > localMinor
+  end
+  return remotePatch > localPatch
+end
+
+function ns.NoteVersion(remote)
+  remote = ns.Clean(remote or "", 16)
+  if remote == "" or not ns.db then
+    return
+  end
+  if not ns.VersionNewer(remote, ns.VERSION) then
+    if type(ns.db.newerVersion) == "string" and not ns.VersionNewer(ns.db.newerVersion, ns.VERSION) then
+      ns.db.newerVersion = nil
+    end
+    return
+  end
+  ns.db.newerVersion = remote
+  if ns.toldNewer == remote then
+    return
+  end
+  ns.toldNewer = remote
+  ns.Print("Hireling v" .. remote .. " is on CurseForge. You have v" .. ns.VERSION .. ".")
+end
+
+function ns.CheckUpdate()
+  local remote = ns.db and ns.db.newerVersion
+  if type(remote) == "string" and ns.VersionNewer(remote, ns.VERSION) then
+    ns.toldNewer = remote
+    ns.Print("Hireling v" .. remote .. " is on CurseForge. You have v" .. ns.VERSION .. ".")
+  elseif ns.db then
+    ns.db.newerVersion = nil
+  end
+end
+
+function ns.Greet()
+  if ns.greeted then
+    return
+  end
+  ns.greeted = true
+  ns.Print("Hireling v" .. ns.VERSION .. " loaded. Type /hireling or /hl to open.")
+  ns.CheckUpdate()
 end
 
 function ns.RememberJob(key, role, other)
@@ -806,6 +866,9 @@ local function OnEvent(event, arg1, arg2)
       isReload = false
     end
     if first or isLogin or isReload then
+      if ns.Greet then
+        ns.Greet()
+      end
       if ns.db and ns.db.openOnLogin and ns.frame and not ns.frame:IsShown() then
         ns.frame:Show()
       end

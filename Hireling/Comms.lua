@@ -560,6 +560,10 @@ local function SendOwn(skipHello)
       end
     end
   end
+  local versionPacket = "U\031" .. (ns.VERSION or "0")
+  if #versionPacket <= ns.MAX_MSG then
+    ns.Send(versionPacket)
+  end
 end
 
 function ns.Announce()
@@ -745,6 +749,13 @@ local function OnAddonMessage(prefix, message, distribution, sender, _, _, _, ch
     local id = parts[3] or ""
     if owner ~= "" and string.match(id, "^[a-z0-9]+$") and ns.MarkDone then
       ns.MarkDone(ns.Key(owner, id), true)
+    end
+    return
+  end
+  if opcode == "U" then
+    local parts = Split(message)
+    if ns.NoteVersion then
+      ns.NoteVersion(parts[2])
     end
     return
   end

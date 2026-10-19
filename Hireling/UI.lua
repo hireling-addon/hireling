@@ -677,6 +677,9 @@ function ns.RefreshDetail()
         else
           ns.Send("D\031" .. ns.Clean(listing.owner, 12) .. "\031" .. ns.Clean(listing.id, 12))
         end
+        if listing.owner == mine then
+          ns.AskRemove(listing)
+        end
       end
     end
   elseif job then
@@ -903,16 +906,338 @@ function ns.InCombat()
   return false
 end
 
+ns.DISCORD = "https://discord.gg/xJ8H2uDejT"
+
+function ns.ShowDiscord()
+  local url = ns.DISCORD
+  if StaticPopupDialogs and StaticPopup_Show then
+    if not StaticPopupDialogs.HIRELING_DISCORD then
+      StaticPopupDialogs.HIRELING_DISCORD = {
+        text = "Hireling Discord. Copy this link.",
+        button1 = "Close",
+        hasEditBox = true,
+        editBoxWidth = 280,
+        OnShow = function(self)
+          local box = self.editBox or self.EditBox
+          if box then
+            box:SetText(ns.DISCORD)
+            box:HighlightText()
+            if box.SetFocus then
+              box:SetFocus()
+            end
+          end
+        end,
+        EditBoxOnEscapePressed = function(self)
+          self:GetParent():Hide()
+        end,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+        preferredIndex = 3,
+      }
+    end
+    StaticPopup_Show("HIRELING_DISCORD")
+  end
+  if ns.Print then
+    ns.Print("Discord: " .. url)
+  end
+end
+
+ns.SOUNDS = {
+  { id = "tell", label = "Tell", kit = "TELL_MESSAGE", file = "Sound\\Interface\\iTellMessage.ogg" },
+  { id = "click", label = "Click", kit = "IG_MAINMENU_OPTION_CHECKBOX_ON", file = "Sound\\Interface\\igMainMenuOptionCheckBoxOn.ogg" },
+  { id = "ready", label = "Ready", kit = "READY_CHECK", file = "Sound\\Interface\\ReadyCheck.ogg" },
+  { id = "auction", label = "Auction", kit = "AUCTION_WINDOW_OPEN", file = "Sound\\Interface\\AuctionWindowOpen.ogg" },
+  { id = "coins", label = "Coins", kit = "LOOT_WINDOW_COIN_SOUND", file = "Sound\\Interface\\LootCoinSmall.ogg" },
+  { id = "level", label = "Level", kit = "LEVELUP", file = "Sound\\Interface\\LevelUp.ogg" },
+  { id = "warning", label = "Warning", kit = "RAID_WARNING", file = "Sound\\Interface\\RaidWarning.ogg" },
+  { id = "ping", label = "Ping", kit = "MAP_PING", file = "Sound\\Interface\\MapPing.ogg" },
+  { id = "quest", label = "Quest", kit = "IG_QUEST_LIST_OPEN", file = "Sound\\Interface\\iQuestLogOpenA.ogg" },
+}
+
+function ns.SoundById(id)
+  for index = 1, #ns.SOUNDS do
+    if ns.SOUNDS[index].id == id then
+      return ns.SOUNDS[index]
+    end
+  end
+  return ns.SOUNDS[1]
+end
+
 function ns.PlayTell()
-  if not ns.db or ns.db.sound == false or not PlaySound then
+  if not ns.db or ns.db.sound == false then
     return false
   end
-  if SOUNDKIT and SOUNDKIT.TELL_MESSAGE then
-    if pcall(PlaySound, SOUNDKIT.TELL_MESSAGE, "Master") then
+  local sound = ns.SoundById(ns.db.soundId)
+  if PlaySound and SOUNDKIT and sound.kit and SOUNDKIT[sound.kit] then
+    if pcall(PlaySound, SOUNDKIT[sound.kit], "Master") then
       return true
     end
   end
-  return pcall(PlaySound, "TellMessage")
+  if PlaySoundFile and sound.file and pcall(PlaySoundFile, sound.file, "Master") then
+    return true
+  end
+  if PlaySound and pcall(PlaySound, "TellMessage") then
+    return true
+  end
+  return false
+end
+
+function ns.PreviewSound(id)
+  if not ns.db then
+    return
+  end
+  ns.db.sound = true
+  ns.db.soundId = id
+  if not ns.PlayTell() then
+    ns.SetStatus("That sound is not in this client.")
+  end
+  if ns.RefreshOptions then
+    ns.RefreshOptions()
+  end
+end
+
+function ns.OpenChoices(anchor, choices, current, onPick)
+  if not ns.choices then
+    local frame = CreateFrame("Frame", "HirelingChoices", UIParent, "BackdropTemplate")
+    frame:SetFrameStrata("DIALOG")
+    frame:SetFrameLevel(220)
+    frame:SetClampedToScreen(true)
+    frame:EnableMouse(true)
+    Paint(frame, BG, LINE)
+    frame.buttons = {}
+    ns.choices = frame
+  end
+  local frame = ns.choices
+  if frame:IsShown() and frame.anchor == anchor then
+    frame:Hide()
+    return
+  end
+  frame.anchor = anchor
+  local width = 124
+  local cols = #choices > 4 and 4 or #choices
+  if cols < 1 then
+    cols = 1
+  end
+  local rows = math.ceil(#choices / cols)
+  frame:SetSize(cols * (width + 4) + 8, rows * 26 + 8)
+  frame:ClearAllPoints()
+  frame:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -4)
+  for index = 1, #frame.buttons do
+    frame.buttons[index]:Hide()
+  end
+  for index = 1, #choices do
+    local choice = choices[index]
+    local button = frame.buttons[index]
+    if not button then
+      button = ClickButton(frame, choice.label, width, 22)
+      frame.buttons[index] = button
+    end
+    button:SetLabel(choice.label)
+    button:Show()
+    button:SetActive(choice.id == current)
+    local col = (index - 1) % cols
+    local row = math.floor((index - 1) / cols)
+    button:ClearAllPoints()
+    button:SetPoint("TOPLEFT", frame, "TOPLEFT", 4 + col * (width + 4), -4 - row * 26)
+    button.onClick = function()
+      onPick(choice.id)
+      frame:Hide()
+    end
+  end
+  frame:Show()
+end
+
+function ns.AskRemove(listing)
+  if not listing or listing.owner ~= ns.MyName() then
+    return
+  end
+  if not ns.removePrompt then
+    local prompt = CreateFrame("Frame", "HirelingRemove", UIParent, "BackdropTemplate")
+    prompt:SetSize(340, 120)
+    prompt:SetPoint("CENTER", 0, 40)
+    prompt:SetFrameStrata("DIALOG")
+    prompt:SetFrameLevel(230)
+    prompt:SetClampedToScreen(true)
+    prompt:EnableMouse(true)
+    Paint(prompt, BG, LINE)
+    local title = Font(prompt, true)
+    Color(title, GOLD)
+    title:SetPoint("TOPLEFT", 10, -12)
+    title:SetPoint("TOPRIGHT", -10, -12)
+    title:SetJustifyH("LEFT")
+    title:SetText("Remove this post?")
+    local body = Font(prompt, true)
+    Color(body, PAPER)
+    body:SetPoint("TOPLEFT", 10, -34)
+    body:SetPoint("TOPRIGHT", -10, -34)
+    body:SetJustifyH("LEFT")
+    body:SetWordWrap(true)
+    body:SetHeight(32)
+    prompt.body = body
+    local remove = ClickButton(prompt, "Remove", 90, 22)
+    remove:SetPoint("BOTTOMLEFT", 10, 10)
+    remove.onClick = function()
+      local current = prompt.listing
+      prompt:Hide()
+      if current and ns.Withdraw then
+        ns.Withdraw(current)
+      end
+    end
+    local keep = ClickButton(prompt, "Keep", 70, 22)
+    keep:SetPoint("LEFT", remove, "RIGHT", 6, 0)
+    keep.onClick = function()
+      prompt:Hide()
+    end
+    ns.removePrompt = prompt
+  end
+  ns.removePrompt.listing = listing
+  ns.removePrompt.body:SetText(ns.Safe(listing.title) .. " stays on the board unless you take it down.")
+  ns.removePrompt:Show()
+end
+
+function ns.CreateMinimapButton()
+  if ns.minimapButton or not Minimap or not ns.db then
+    return
+  end
+  local launcher
+  if LibStub then
+    local ok, ldb = pcall(LibStub, "LibDataBroker-1.1", true)
+    if ok and type(ldb) == "table" and type(ldb.NewDataObject) == "function" then
+      launcher = ldb:NewDataObject("Hireling", {
+        type = "launcher",
+        text = "Hireling",
+        icon = "Interface\\Icons\\INV_Misc_Coin_01",
+        OnClick = function(_, button)
+          if button == "RightButton" then
+            if ns.frame and not ns.frame:IsShown() then
+              ns.frame:Show()
+            end
+            if ns.ShowPage then
+              ns.ShowPage("options")
+            end
+          elseif ns.Toggle then
+            ns.Toggle()
+          end
+        end,
+        OnTooltipShow = function(tip)
+          if not tip then
+            return
+          end
+          tip:AddLine("Hireling")
+          tip:AddLine("Left-click to open the board.", 1, 1, 1)
+          tip:AddLine("Button addons can grab this.", 0.7, 0.7, 0.7)
+        end,
+      })
+      ns.launcher = launcher
+    end
+    local iconOk, iconLib = pcall(LibStub, "LibDBIcon-1.0", true)
+    if launcher and iconOk and type(iconLib) == "table" and type(iconLib.Register) == "function" then
+      local registered = pcall(iconLib.Register, iconLib, "Hireling", launcher, ns.db.minimap)
+      if registered then
+        ns.minimapButton = true
+        return
+      end
+    end
+  end
+  local button = CreateFrame("Button", "HirelingMinimapButton", Minimap)
+  button:SetSize(31, 31)
+  button:SetFrameStrata("MEDIUM")
+  button:SetFrameLevel(8)
+  button:RegisterForClicks("AnyUp")
+  button:RegisterForDrag("LeftButton")
+  button:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
+  button.dataObject = launcher
+  local icon = button:CreateTexture(nil, "BACKGROUND")
+  icon:SetSize(20, 20)
+  icon:SetPoint("CENTER", 0, 1)
+  icon:SetTexture("Interface\\Icons\\INV_Misc_Coin_01")
+  icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+  local ring = button:CreateTexture(nil, "OVERLAY")
+  ring:SetSize(53, 53)
+  ring:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+  ring:SetPoint("TOPLEFT")
+  local dragging = false
+  local function Angle()
+    local saved = ns.db and ns.db.minimap and ns.db.minimap.angle
+    if type(saved) ~= "number" then
+      return 225
+    end
+    return saved
+  end
+  local function Place()
+    if button:GetParent() ~= Minimap then
+      return
+    end
+    local radius = (Minimap:GetWidth() / 2) + 5
+    local rad = math.rad(Angle())
+    button:ClearAllPoints()
+    button:SetPoint("CENTER", Minimap, "CENTER", math.cos(rad) * radius, math.sin(rad) * radius)
+  end
+  local function SaveAngle()
+    if type(ns.db.minimap) ~= "table" then
+      ns.db.minimap = {}
+    end
+    local scale = Minimap:GetEffectiveScale()
+    local mx, my = Minimap:GetCenter()
+    local cx, cy = GetCursorPosition()
+    if not scale or not mx or not my or scale == 0 then
+      return
+    end
+    cx, cy = cx / scale, cy / scale
+    ns.db.minimap.angle = math.deg(math.atan2(cy - my, cx - mx))
+  end
+  button:SetScript("OnDragStart", function(self)
+    if self:GetParent() ~= Minimap then
+      return
+    end
+    dragging = true
+    self:SetScript("OnUpdate", function()
+      SaveAngle()
+      Place()
+    end)
+  end)
+  button:SetScript("OnDragStop", function(self)
+    self:SetScript("OnUpdate", nil)
+    SaveAngle()
+    Place()
+  end)
+  button:SetScript("OnClick", function(_, which)
+    if dragging then
+      dragging = false
+      return
+    end
+    if which == "RightButton" then
+      if ns.frame and not ns.frame:IsShown() then
+        ns.frame:Show()
+      end
+      if ns.ShowPage then
+        ns.ShowPage("options")
+      end
+      return
+    end
+    if ns.Toggle then
+      ns.Toggle()
+    end
+  end)
+  button:SetScript("OnEnter", function(self)
+    if not GameTooltip then
+      return
+    end
+    GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+    GameTooltip:ClearLines()
+    GameTooltip:AddLine("Hireling")
+    GameTooltip:AddLine("Left-click to open the board.", 1, 1, 1)
+    GameTooltip:AddLine("Drag to move. Button addons can grab this.", 0.7, 0.7, 0.7)
+    GameTooltip:Show()
+  end)
+  button:SetScript("OnLeave", function()
+    if GameTooltip then
+      GameTooltip:Hide()
+    end
+  end)
+  Place()
+  ns.minimapButton = button
 end
 
 function ns.AlertCombat(text)
@@ -1675,19 +2000,19 @@ function ns.BuildUI()
   end
   local category = ClickButton(board, "All crafts", 524, 22)
   category:SetPoint("TOPLEFT", recent, "BOTTOMLEFT", 0, -4)
-  category.onClick = function()
-    local order = { "all", "Craft", "Enchant", "Gather", "Group", "Portal", "Other" }
-    local nextIndex = 1
-    for index = 1, #order do
-      if order[index] == (ns.filterCategory or "all") then
-        nextIndex = index + 1
-      end
-    end
-    if nextIndex > #order then
-      nextIndex = 1
-    end
-    ns.filterCategory = order[nextIndex]
-    ns.RefreshBoard()
+  category.onClick = function(self)
+    ns.OpenChoices(self, {
+      { id = "all", label = "All crafts" },
+      { id = "Craft", label = "Craft" },
+      { id = "Enchant", label = "Enchant" },
+      { id = "Gather", label = "Gather" },
+      { id = "Group", label = "Group" },
+      { id = "Portal", label = "Portal" },
+      { id = "Other", label = "Other" },
+    }, ns.filterCategory or "all", function(id)
+      ns.filterCategory = id
+      ns.RefreshBoard()
+    end)
   end
   local boardScroll = ScrollArea(board)
   boardScroll:SetPoint("TOPLEFT", category, "BOTTOMLEFT", 0, -6)
@@ -1735,18 +2060,15 @@ function ns.BuildUI()
     ns.post.kind = "task"
     paintKind()
   end
-  categoryBtn.onClick = function()
-    local nextIndex = 1
+  categoryBtn.onClick = function(self)
+    local choices = {}
     for index = 1, #CATEGORY_LIST do
-      if CATEGORY_LIST[index] == ns.post.category then
-        nextIndex = index + 1
-      end
+      choices[index] = { id = CATEGORY_LIST[index], label = CATEGORY_LIST[index] }
     end
-    if nextIndex > #CATEGORY_LIST then
-      nextIndex = 1
-    end
-    ns.post.category = CATEGORY_LIST[nextIndex]
-    paintKind()
+    ns.OpenChoices(self, choices, ns.post.category, function(id)
+      ns.post.category = id
+      paintKind()
+    end)
   end
   local titleLabel = FieldLabel(post, "Title")
   titleLabel:SetPoint("TOPLEFT", categoryBtn, "BOTTOMLEFT", 0, -8)
@@ -1953,13 +2275,30 @@ function ns.BuildUI()
   end, function(on)
     ns.db.sound = on and true or false
   end)
-  local loginRow = OptionRow("Open Hireling when you log in.", -96, function()
+  local soundHint = Font(options, true)
+  soundHint:SetPoint("TOPLEFT", 0, -92)
+  soundHint:SetText("Click a sound to preview it.")
+  Color(soundHint, MUTED or PAPER)
+  local soundButtons = {}
+  for index = 1, #ns.SOUNDS do
+    local sound = ns.SOUNDS[index]
+    local button = ClickButton(options, sound.label, 98, 22)
+    button.soundId = sound.id
+    local col = (index - 1) % 5
+    local row = math.floor((index - 1) / 5)
+    button:SetPoint("TOPLEFT", col * 102, -110 - row * 26)
+    button.onClick = function(self)
+      ns.PreviewSound(self.soundId)
+    end
+    soundButtons[index] = button
+  end
+  local loginRow = OptionRow("Open Hireling when you log in.", -168, function()
     return ns.db and ns.db.openOnLogin == true
   end, function(on)
     ns.db.openOnLogin = on and true or false
   end)
   local themeLabel = Font(options, true)
-  themeLabel:SetPoint("TOPLEFT", 0, -132)
+  themeLabel:SetPoint("TOPLEFT", 0, -204)
   themeLabel:SetText("Theme")
   Color(themeLabel, PAPER)
   local themeButtons = {}
@@ -1969,7 +2308,7 @@ function ns.BuildUI()
     local button = ClickButton(options, THEME_LABEL[name], 88, 22)
     button.themeName = name
     if index == 1 then
-      button:SetPoint("TOPLEFT", 0, -152)
+      button:SetPoint("TOPLEFT", 0, -224)
     else
       button:SetPoint("TOPLEFT", themePrev, "TOPRIGHT", 6, 0)
     end
@@ -1980,14 +2319,14 @@ function ns.BuildUI()
     themePrev = button
   end
   local scaleLabel = Font(options, true)
-  scaleLabel:SetPoint("TOPLEFT", 0, -186)
+  scaleLabel:SetPoint("TOPLEFT", 0, -258)
   scaleLabel:SetText("Window scale")
   Color(scaleLabel, PAPER)
   local scaleValue = Font(options, false)
-  scaleValue:SetPoint("TOPLEFT", 110, -184)
+  scaleValue:SetPoint("TOPLEFT", 110, -256)
   Color(scaleValue, GOLD)
   local scaleDown = ClickButton(options, "-", 28, 22)
-  scaleDown:SetPoint("TOPLEFT", 170, -186)
+  scaleDown:SetPoint("TOPLEFT", 170, -258)
   scaleDown.onClick = function()
     ns.db.scale = (tonumber(ns.db.scale) or 1) - 0.1
     ns.ApplyScale()
@@ -2000,9 +2339,19 @@ function ns.BuildUI()
     ns.ApplyScale()
     ns.RefreshOptions()
   end
+  local discord = ClickButton(options, "Discord", 110, 22)
+  discord:SetPoint("TOPLEFT", 0, -292)
+  discord.onClick = function()
+    ns.ShowDiscord()
+  end
+  local discordHint = Font(options, true)
+  discordHint:SetPoint("LEFT", discord, "RIGHT", 8, 0)
+  discordHint:SetText("Copies the invite.")
+  Color(discordHint, PAPER)
   ns.options = {
     test = testRow,
     sound = soundRow,
+    sounds = soundButtons,
     login = loginRow,
     themes = themeButtons,
     scale = scaleValue,
@@ -2013,6 +2362,11 @@ function ns.BuildUI()
     end
     ns.options.test.refresh()
     ns.options.sound.refresh()
+    local chosen = ns.db and ns.db.soundId or "tell"
+    for index = 1, #ns.options.sounds do
+      local button = ns.options.sounds[index]
+      button:SetActive(button.soundId == chosen)
+    end
     ns.options.login.refresh()
     local theme = ns.ThemeName and ns.ThemeName() or "acid"
     for index = 1, #ns.options.themes do
@@ -2147,6 +2501,9 @@ function ns.BuildUI()
         page:Hide()
       end
     end
+    if ns.choices then
+      ns.choices:Hide()
+    end
     for key, button in pairs(ns.tabs) do
       button:SetActive(key == name)
     end
@@ -2181,4 +2538,5 @@ function ns.BuildUI()
   ns.ShowPage("board")
   paintKind()
   ns.UpdateStatus()
+  ns.CreateMinimapButton()
 end

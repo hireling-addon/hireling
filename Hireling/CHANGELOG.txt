@@ -1,3 +1,11 @@
+0.1.3
+- Options has a Discord button. It copies https://discord.gg/xJ8H2uDejT
+- Craft and category open a picker instead of cycling.
+- Login says the version and the slash commands, then checks for a newer build.
+- Marking a job done asks the owner if the post should come down.
+- Sound has a list of built-in game sounds, and a click previews the one you pick.
+- Minimap button can be grabbed by button addons that read LibDataBroker or minimap children.
+
 0.1.2
 - The Hireling channel waits for General and Trade, then moves itself to channel 6.
 
