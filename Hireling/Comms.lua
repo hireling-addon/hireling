@@ -126,11 +126,11 @@ function ns.PackReview(review)
   end
   return table.concat({
     "R",
-    ns.Clean(owner, 12),
+    ns.Clean(owner, ns.NAME_MAX or 48),
     ns.Clean(id, 6),
     side,
     tostring(stars),
-    ns.Clean(review.about, 12),
+    ns.Clean(review.about, ns.NAME_MAX or 48),
     ns.Clean(review.note, 80),
   }, SEP)
 end
@@ -139,7 +139,7 @@ function ns.PackJob(owner, id, role)
   local code = role == "seller" and "s" or "b"
   return table.concat({
     "T",
-    ns.Clean(owner, 12),
+    ns.Clean(owner, ns.NAME_MAX or 48),
     ns.Clean(id, 6),
     code,
   }, SEP)
@@ -609,15 +609,7 @@ function ns.ReplyHello(sender)
 end
 
 local function ShortName(sender)
-  sender = ns.Plain(sender)
-  if type(sender) ~= "string" then
-    return nil
-  end
-  local name = string.match(sender, "^([^%-]+)") or sender
-  if #name < 2 or #name > 24 or string.find(name, SEP, 1, true) then
-    return nil
-  end
-  return name
+  return ns.PlayerName(sender)
 end
 
 local function OnAddonMessage(prefix, message, distribution, sender, _, _, _, channelName)
@@ -693,7 +685,7 @@ local function OnAddonMessage(prefix, message, distribution, sender, _, _, _, ch
   end
   if opcode == "R" then
     local parts = Split(message)
-    local owner = ns.Clean(parts[2], 12)
+    local owner = ns.Clean(parts[2], ns.NAME_MAX or 48)
     local id = parts[3] or ""
     if owner == "" or not string.match(id, "^[a-z0-9]+$") then
       return
@@ -707,7 +699,7 @@ local function OnAddonMessage(prefix, message, distribution, sender, _, _, _, ch
       listingKey = ns.Key(owner, id),
       side = side,
       author = who,
-      about = ns.Clean(parts[6], 12),
+      about = ns.Clean(parts[6], ns.NAME_MAX or 48),
       note = ns.Clean(parts[7], 80),
       stars = math.floor(stars),
       updated = time(),
@@ -716,7 +708,7 @@ local function OnAddonMessage(prefix, message, distribution, sender, _, _, _, ch
   end
   if opcode == "T" then
     local parts = Split(message)
-    local owner = ns.Clean(parts[2], 12)
+    local owner = ns.Clean(parts[2], ns.NAME_MAX or 48)
     local id = parts[3] or ""
     if owner == "" or not string.match(id, "^[a-z0-9]+$") then
       return
@@ -739,13 +731,13 @@ local function OnAddonMessage(prefix, message, distribution, sender, _, _, _, ch
     local parts = Split(message)
     local id = parts[2] or ""
     if string.match(id, "^[a-z0-9]+$") and ns.ClaimListing then
-      ns.ClaimListing(who, id, ns.Clean(parts[3], 12))
+      ns.ClaimListing(who, id, ns.Clean(parts[3], ns.NAME_MAX or 48))
     end
     return
   end
   if opcode == "D" then
     local parts = Split(message)
-    local owner = ns.Clean(parts[2], 12)
+    local owner = ns.Clean(parts[2], ns.NAME_MAX or 48)
     local id = parts[3] or ""
     if owner ~= "" and string.match(id, "^[a-z0-9]+$") and ns.MarkDone then
       ns.MarkDone(ns.Key(owner, id), true)

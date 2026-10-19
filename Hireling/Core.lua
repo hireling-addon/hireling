@@ -5,7 +5,8 @@ end
 
 ns.ADDON = ADDON
 ns.PREFIX = "Hireling"
-ns.VERSION = "0.1.3"
+ns.VERSION = "0.1.4"
+ns.NAME_MAX = 48
 ns.WEEK = 7 * 24 * 60 * 60
 ns.MAX_FEE = 5000 * 10000
 ns.MAX_MSG = 250
@@ -63,15 +64,42 @@ function ns.Safe(text)
   return shown
 end
 
+function ns.PlayerName(raw)
+  raw = ns.Plain(raw)
+  if type(raw) ~= "string" then
+    return nil
+  end
+  raw = ns.Trim(raw)
+  if raw == "" or raw == "Unknown" then
+    return nil
+  end
+  if type(Ambiguate) == "function" then
+    local short = ns.Plain(Ambiguate(raw, "none"))
+    if type(short) == "string" and short ~= "" then
+      raw = ns.Trim(short)
+    end
+  end
+  if string.find(raw, " ", 1, true) then
+    raw = string.gsub(raw, "%-[^%s]+$", "")
+  else
+    raw = string.match(raw, "^([^%-]+)") or raw
+  end
+  raw = string.gsub(raw, "%s+", " ")
+  raw = ns.Trim(raw)
+  if #raw < 2 or #raw > (ns.NAME_MAX or 48) then
+    return nil
+  end
+  if string.find(raw, ":", 1, true) or string.find(raw, "\031", 1, true) then
+    return nil
+  end
+  return raw
+end
+
 function ns.MyName()
   if type(UnitName) ~= "function" then
     return nil
   end
-  local name = ns.Plain(UnitName("player"))
-  if type(name) ~= "string" or name == "" or name == "Unknown" then
-    return nil
-  end
-  return name
+  return ns.PlayerName(UnitName("player"))
 end
 
 function ns.FactionCode()
@@ -505,6 +533,22 @@ function ns.CheckUpdate()
   end
 end
 
+ns.CHANGELOG = [[0.1.4
+Asks and job packets keep the full Forever name, first and last.
+
+0.1.3
+Discord button, category picker, login line, update check, remove-post question, sound list, minimap button.
+
+0.1.2
+Hireling waits for General and Trade, then moves to channel 6.
+
+0.1.1
+Trade advertisement, here, claimed, inbox, categories, mark done, standing offers.
+
+0.1.0
+First board. Offers, bids, search, ratings, and ask popups. Gold stays in the trade window.
+]]
+
 function ns.Greet()
   if ns.greeted then
     return
@@ -597,7 +641,7 @@ function ns.LoadSample(quiet)
   end
   add({
     id = "helm01",
-    owner = "Maela",
+    owner = "Maela Copperwhistle",
     kind = "offer",
     faction = ns.FactionCode(),
     category = "Craft",
@@ -610,7 +654,7 @@ function ns.LoadSample(quiet)
   })
   add({
     id = "bracer",
-    owner = "BrotherCald",
+    owner = "Brother Cald",
     kind = "offer",
     faction = ns.FactionCode(),
     category = "Enchant",
@@ -623,7 +667,7 @@ function ns.LoadSample(quiet)
   })
   add({
     id = "port01",
-    owner = "Hest",
+    owner = "Hest Stone",
     kind = "task",
     faction = ns.FactionCode(),
     category = "Portal",
@@ -636,7 +680,7 @@ function ns.LoadSample(quiet)
   })
   add({
     id = "stock1",
-    owner = "Bryn",
+    owner = "Bryn Holt",
     kind = "task",
     faction = ns.FactionCode(),
     category = "Group",
@@ -647,16 +691,16 @@ function ns.LoadSample(quiet)
     meet = "Stormwind gates",
     ordersCompleted = 6,
   })
-  AddSampleReview("Maela:helm01", "buyer", "Senn", "Maela", 5, "Helm was right. Paid, then mailed.")
-  AddSampleReview("Maela:helm01", "seller", "Maela", "Senn", 5, "Materials were complete.")
-  AddSampleReview("BrotherCald:bracer", "buyer", "Jori", "BrotherCald", 2, "Wrong enchant the first time.")
-  AddSampleReview("BrotherCald:bracer", "seller", "BrotherCald", "Jori", 2, "Would not name the enchant.")
-  AddSampleReview("Hest:port01", "buyer", "Hest", "Ysabel", 5, "Portals were instant.")
-  AddSampleReview("Hest:port01", "seller", "Ysabel", "Hest", 5, "Paid before the first portal.")
-  AddSampleReview("Bryn:stock1", "buyer", "Bryn", "Pellin", 4, "One wipe, then the clear.")
-  AddSampleReview("Bryn:stock1", "seller", "Pellin", "Bryn", 2, "The group was short a healer.")
-  ns.NoteSeen("Maela")
-  ns.NoteSeen("Hest")
+  AddSampleReview("Maela Copperwhistle:helm01", "buyer", "Senn Briarthorn", "Maela Copperwhistle", 5, "Helm was right. Paid, then mailed.")
+  AddSampleReview("Maela Copperwhistle:helm01", "seller", "Maela Copperwhistle", "Senn Briarthorn", 5, "Materials were complete.")
+  AddSampleReview("Brother Cald:bracer", "buyer", "Jori Ashford", "Brother Cald", 2, "Wrong enchant the first time.")
+  AddSampleReview("Brother Cald:bracer", "seller", "Brother Cald", "Jori Ashford", 2, "Would not name the enchant.")
+  AddSampleReview("Hest Stone:port01", "buyer", "Hest Stone", "Ysabel Quickstep", 5, "Portals were instant.")
+  AddSampleReview("Hest Stone:port01", "seller", "Ysabel Quickstep", "Hest Stone", 5, "Paid before the first portal.")
+  AddSampleReview("Bryn Holt:stock1", "buyer", "Bryn Holt", "Captain Pellin", 4, "One wipe, then the clear.")
+  AddSampleReview("Bryn Holt:stock1", "seller", "Captain Pellin", "Bryn Holt", 2, "The group was short a healer.")
+  ns.NoteSeen("Maela Copperwhistle")
+  ns.NoteSeen("Hest Stone")
   ns.db.testMode = true
   if quiet then
     if ns.Refresh then

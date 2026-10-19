@@ -675,7 +675,7 @@ function ns.RefreshDetail()
         if listing.localOnly == true then
           ns.MarkDone(key, true)
         else
-          ns.Send("D\031" .. ns.Clean(listing.owner, 12) .. "\031" .. ns.Clean(listing.id, 12))
+          ns.Send("D\031" .. ns.Clean(listing.owner, ns.NAME_MAX or 48) .. "\031" .. ns.Clean(listing.id, 12))
         end
         if listing.owner == mine then
           ns.AskRemove(listing)
@@ -769,7 +769,7 @@ function ns.AskListing(listing)
   if type(listing) ~= "table" then
     return
   end
-  local who = string.match(ns.Safe(listing.owner), "^(%S+)") or ""
+  local who = ns.PlayerName(listing.owner) or ""
   if who == "" or who == ns.MyName() then
     ns.SetStatus("No one to ask.")
     return
@@ -867,7 +867,7 @@ function ns.CommitReply()
     return
   end
   if choice == "y" and reply.listingId and reply.listingId ~= "" then
-    ns.Send("C\031" .. ns.Clean(reply.listingId, 12) .. "\031" .. ns.Clean(reply.who, 12))
+    ns.Send("C\031" .. ns.Clean(reply.listingId, 12) .. "\031" .. ns.Clean(reply.who, ns.NAME_MAX or 48))
     if ns.ClaimListing then
       ns.ClaimListing(ns.MyName(), reply.listingId, reply.who)
     end
@@ -907,6 +907,39 @@ function ns.InCombat()
 end
 
 ns.DISCORD = "https://discord.gg/xJ8H2uDejT"
+
+function ns.ShowChangelog()
+  if not ns.changelog then
+    local frame = CreateFrame("Frame", "HirelingChangelog", UIParent, "BackdropTemplate")
+    frame:SetSize(420, 280)
+    frame:SetPoint("CENTER", 0, 20)
+    frame:SetFrameStrata("DIALOG")
+    frame:SetFrameLevel(240)
+    frame:SetClampedToScreen(true)
+    frame:EnableMouse(true)
+    Paint(frame, BG, LINE)
+    local title = Font(frame, true)
+    Color(title, GOLD)
+    title:SetPoint("TOPLEFT", 10, -12)
+    title:SetText("Changelog")
+    local close = ClickButton(frame, "Close", 64, 22)
+    close:SetPoint("TOPRIGHT", -8, -8)
+    close.onClick = function()
+      frame:Hide()
+    end
+    local body = Font(frame, true)
+    Color(body, PAPER)
+    body:SetPoint("TOPLEFT", 10, -40)
+    body:SetPoint("BOTTOMRIGHT", -10, 10)
+    body:SetJustifyH("LEFT")
+    body:SetJustifyV("TOP")
+    body:SetWordWrap(true)
+    frame.body = body
+    ns.changelog = frame
+  end
+  ns.changelog.body:SetText(ns.CHANGELOG or "No changelog yet.")
+  ns.changelog:Show()
+end
 
 function ns.ShowDiscord()
   local url = ns.DISCORD
@@ -2344,8 +2377,13 @@ function ns.BuildUI()
   discord.onClick = function()
     ns.ShowDiscord()
   end
+  local changelog = ClickButton(options, "Changelog", 110, 22)
+  changelog:SetPoint("LEFT", discord, "RIGHT", 8, 0)
+  changelog.onClick = function()
+    ns.ShowChangelog()
+  end
   local discordHint = Font(options, true)
-  discordHint:SetPoint("LEFT", discord, "RIGHT", 8, 0)
+  discordHint:SetPoint("LEFT", changelog, "RIGHT", 8, 0)
   discordHint:SetText("Copies the invite.")
   Color(discordHint, PAPER)
   ns.options = {
