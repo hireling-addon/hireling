@@ -1,3 +1,7 @@
+0.1.7
+- My UI matches EllesmereUI, ElvUI, or SpartanUI. If none of those is loaded, it uses your class color.
+- My UI is the default until you pick Acid, Ice, or Flare on purpose.
+
 0.1.6
 - A second person cannot take a job that is already claimed.
 - The claim box has No. That clears the claim and tells the other person.

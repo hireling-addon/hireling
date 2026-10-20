@@ -5,7 +5,7 @@ end
 
 ns.ADDON = ADDON
 ns.PREFIX = "Hireling"
-ns.VERSION = "0.1.6"
+ns.VERSION = "0.1.7"
 ns.NAME_MAX = 48
 ns.WEEK = 7 * 24 * 60 * 60
 ns.MAX_FEE = 5000 * 10000
@@ -199,8 +199,11 @@ function ns.InitDB()
   if type(ns.db.scale) ~= "number" then
     ns.db.scale = 1
   end
-  if ns.db.theme ~= "acid" and ns.db.theme ~= "ice" and ns.db.theme ~= "flare" then
-    ns.db.theme = "acid"
+  if ns.db.themePicked ~= true and (ns.db.theme == nil or ns.db.theme == "acid") then
+    ns.db.theme = "match"
+  end
+  if ns.db.theme ~= "acid" and ns.db.theme ~= "ice" and ns.db.theme ~= "flare" and ns.db.theme ~= "match" then
+    ns.db.theme = "match"
   end
   if ns.db.testMode ~= true then
     ns.db.testMode = false
@@ -533,7 +536,10 @@ function ns.CheckUpdate()
   end
 end
 
-ns.CHANGELOG = [[0.1.6
+ns.CHANGELOG = [[0.1.7
+My UI copies the accent from EllesmereUI, ElvUI, or SpartanUI. Otherwise it uses your class color.
+
+0.1.6
 A job can only be claimed once. No sends it back. Marking done pings the other person. Test claims show the poster box.
 
 0.1.5

@@ -15,8 +15,8 @@ local BG = { 0.027, 0.027, 0.031 }
 local DIM = { 0.220, 0.220, 0.250 }
 local FONT_PATH = "Interface\\AddOns\\Hireling\\Fonts\\IBMPlexSans-Regular.ttf"
 local CATEGORY_LIST = { "Craft", "Enchant", "Gather", "Group", "Portal", "Other" }
-local THEME_ORDER = { "acid", "ice", "flare" }
-local THEME_LABEL = { acid = "Acid", ice = "Ice", flare = "Flare" }
+local THEME_ORDER = { "match", "acid", "ice", "flare" }
+local THEME_LABEL = { match = "My UI", acid = "Acid", ice = "Ice", flare = "Flare" }
 local PALETTES = {
   acid = {
     gold = { 0.894, 1.000, 0.290 },
@@ -54,6 +54,18 @@ local PALETTES = {
     bg = { 0.051, 0.035, 0.027 },
     dim = { 0.290, 0.200, 0.170 },
   },
+  match = {
+    gold = { 0.047, 0.824, 0.616 },
+    ink = { 0.035, 0.035, 0.043 },
+    paper = { 0.957, 0.957, 0.965 },
+    muted = { 0.557, 0.557, 0.588 },
+    rust = { 1.000, 0.302, 0.180 },
+    panel = { 0.069, 0.058, 0.047 },
+    hot = { 0.110, 0.094, 0.075 },
+    line = { 0.310, 0.310, 0.310 },
+    bg = { 0.040, 0.033, 0.027 },
+    dim = { 0.220, 0.180, 0.150 },
+  },
 }
 
 local function CopyRGB(dest, src)
@@ -65,13 +77,212 @@ end
 function ns.ThemeName()
   local name = ns.db and ns.db.theme or nil
   if not PALETTES[name] then
-    return "acid"
+    return "match"
   end
   return name
 end
 
+local function Clamp01(value)
+  value = tonumber(value) or 0
+  if value < 0 then
+    return 0
+  end
+  if value > 1 then
+    return 1
+  end
+  return value
+end
+
+local function AsRGB(value)
+  if type(value) ~= "table" then
+    return nil
+  end
+  local red = value.r or value[1]
+  local green = value.g or value[2]
+  local blue = value.b or value[3]
+  if type(red) ~= "number" or type(green) ~= "number" or type(blue) ~= "number" then
+    return nil
+  end
+  return { Clamp01(red), Clamp01(green), Clamp01(blue) }
+end
+
+local function Mix(left, right, amount)
+  return {
+    left[1] + (right[1] - left[1]) * amount,
+    left[2] + (right[2] - left[2]) * amount,
+    left[3] + (right[3] - left[3]) * amount,
+  }
+end
+
+local function AddonLoaded(name)
+  if C_AddOns and C_AddOns.IsAddOnLoaded then
+    local ok, loaded = pcall(C_AddOns.IsAddOnLoaded, name)
+    return ok and loaded and true or false
+  end
+  if type(IsAddOnLoaded) == "function" then
+    local ok, loaded = pcall(IsAddOnLoaded, name)
+    return ok and loaded and true or false
+  end
+  return false
+end
+
+local function ClassAccent()
+  if type(UnitClass) == "function" and type(RAID_CLASS_COLORS) == "table" then
+    local _, class = UnitClass("player")
+    local color = class and RAID_CLASS_COLORS[class]
+    local rgb = AsRGB(color)
+    if rgb then
+      return rgb
+    end
+  end
+  return { 0.047, 0.824, 0.616 }
+end
+
+local function ReadEllesmere()
+  local skin = ns.hostSkin
+  if type(skin) ~= "table" or type(skin.GetAccentColor) ~= "function" then
+    return nil
+  end
+  local ok, red, green, blue = pcall(skin.GetAccentColor, skin)
+  if not ok then
+    ok, red, green, blue = pcall(skin.GetAccentColor)
+  end
+  if not ok or type(red) ~= "number" then
+    return nil
+  end
+  local accent = { Clamp01(red), Clamp01(green), Clamp01(blue) }
+  local panel = nil
+  if type(skin.GetPanelColor) == "function" then
+    local panelOk, pr, pg, pb = pcall(skin.GetPanelColor, skin)
+    if not panelOk then
+      panelOk, pr, pg, pb = pcall(skin.GetPanelColor)
+    end
+    if panelOk and type(pr) == "number" then
+      panel = { Clamp01(pr), Clamp01(pg), Clamp01(pb) }
+    end
+  end
+  return accent, panel, "EllesmereUI"
+end
+
+local function ReadElv()
+  if type(ElvUI) ~= "table" then
+    return nil
+  end
+  local ok, addon = pcall(unpack, ElvUI)
+  if not ok or type(addon) ~= "table" or type(addon.media) ~= "table" then
+    return nil
+  end
+  local media = addon.media
+  local accent = AsRGB(media.rgbvaluecolor)
+  if not accent and addon.db and addon.db.general then
+    accent = AsRGB(addon.db.general.valuecolor)
+  end
+  if not accent then
+    return nil
+  end
+  local panel = AsRGB(media.backdropcolor) or AsRGB(media.backdropfadecolor)
+  return accent, panel, "ElvUI"
+end
+
+local function ReadSpartan()
+  local addon = SUI
+  if type(addon) ~= "table" and LibStub then
+    local ok, ace = pcall(LibStub, "AceAddon-3.0", true)
+    if ok and type(ace) == "table" and type(ace.GetAddon) == "function" then
+      local got, found = pcall(ace.GetAddon, ace, "SpartanUI", true)
+      if got and type(found) == "table" then
+        addon = found
+      end
+    end
+  end
+  if type(addon) ~= "table" or type(addon.DB) ~= "table" then
+    return nil
+  end
+  local art = addon.DB.Artwork or addon.DB.artwork
+  local accent = nil
+  if type(art) == "table" then
+    accent = AsRGB(art.Color) or AsRGB(art.color) or AsRGB(art.GlobalColor)
+    local styles = addon.DB.Styles or addon.DB.styles
+    local styleName = art.Style or art.style
+    if not accent and type(styles) == "table" and type(styleName) == "string" and type(styles[styleName]) == "table" then
+      accent = AsRGB(styles[styleName].Color) or AsRGB(styles[styleName].color)
+    end
+  end
+  if not accent then
+    return nil
+  end
+  return accent, nil, "SpartanUI"
+end
+
+function ns.ReadHostTheme()
+  if AddonLoaded("EllesmereUI") or type(EllesmereUI) == "table" then
+    local accent, panel, source = ReadEllesmere()
+    if accent then
+      return accent, panel, source
+    end
+  end
+  if AddonLoaded("ElvUI") or type(ElvUI) == "table" then
+    local accent, panel, source = ReadElv()
+    if accent then
+      return accent, panel, source
+    end
+  end
+  if AddonLoaded("SpartanUI") or type(SUI) == "table" then
+    local accent, panel, source = ReadSpartan()
+    if accent then
+      return accent, panel, source
+    end
+  end
+  return ClassAccent(), nil, "class color"
+end
+
+function ns.RefreshMatchPalette()
+  local accent, panel, source = ns.ReadHostTheme()
+  panel = panel or { 0.069, 0.058, 0.047 }
+  local lum = panel[1] * 0.3 + panel[2] * 0.59 + panel[3] * 0.11
+  local paper = lum > 0.55 and { 0.12, 0.12, 0.13 } or { 0.957, 0.957, 0.965 }
+  local ink = lum > 0.55 and Mix(panel, { 0, 0, 0 }, 0.25) or { 0.035, 0.035, 0.043 }
+  PALETTES.match = {
+    gold = accent,
+    ink = ink,
+    paper = paper,
+    muted = Mix(paper, panel, 0.45),
+    rust = Mix(accent, { 1, 0.25, 0.2 }, 0.35),
+    panel = panel,
+    hot = Mix(panel, { 1, 1, 1 }, 0.14),
+    line = Mix(panel, accent, 0.4),
+    bg = Mix(panel, { 0, 0, 0 }, 0.4),
+    dim = Mix(panel, accent, 0.22),
+  }
+  ns.matchSource = source
+  return source
+end
+
+function ns.RegisterHostSkin()
+  if ns.hostSkinRegistered or type(EllesmereUI) ~= "table" or type(EllesmereUI.RegisterSkin) ~= "function" then
+    return
+  end
+  ns.hostSkinRegistered = true
+  pcall(EllesmereUI.RegisterSkin, EllesmereUI, "Hireling", function(skin)
+    ns.hostSkin = skin
+    if type(skin) == "table" and type(skin.OnLooksChanged) == "function" then
+      pcall(skin.OnLooksChanged, skin, function()
+        if ns.ThemeName and ns.ThemeName() == "match" and ns.SetTheme then
+          ns.SetTheme("match", false)
+        end
+      end)
+    end
+    if ns.ThemeName and ns.ThemeName() == "match" and ns.SetTheme then
+      ns.SetTheme("match", false)
+    end
+  end)
+end
+
 function ns.ApplyPalette(name)
-  local pal = PALETTES[name] or PALETTES.acid
+  if name == "match" then
+    ns.RefreshMatchPalette()
+  end
+  local pal = PALETTES[name] or PALETTES.match or PALETTES.acid
   CopyRGB(GOLD, pal.gold)
   CopyRGB(INK, pal.ink)
   CopyRGB(PAPER, pal.paper)
@@ -2018,12 +2229,26 @@ function ns.RunCheck()
   end
 end
 
-function ns.SetTheme(name)
+function ns.SetTheme(name, picked)
+  if name == "match" then
+    ns.RefreshMatchPalette()
+  end
   if not PALETTES[name] or not ns.db then
     return
   end
   ns.db.theme = name
+  if picked ~= false then
+    ns.db.themePicked = true
+  end
   ns.ApplyPalette(name)
+  if name == "match" and ns.SetStatus then
+    local source = ns.matchSource or "your UI"
+    if source == "class color" then
+      ns.SetStatus("My UI found no Ellesmere, Elv, or Spartan pack. Using your class color.")
+    else
+      ns.SetStatus("Matched " .. source .. ".")
+    end
+  end
   local function recolor(frame)
     if not frame then
       return
@@ -2797,4 +3022,20 @@ function ns.BuildUI()
   paintKind()
   ns.UpdateStatus()
   ns.CreateMinimapButton()
+end
+
+if CreateFrame then
+  local hostWatch = CreateFrame("Frame")
+  hostWatch:RegisterEvent("PLAYER_LOGIN")
+  hostWatch:RegisterEvent("ADDON_LOADED")
+  hostWatch:SetScript("OnEvent", function(_, event, name)
+    if event == "ADDON_LOADED" and name ~= "EllesmereUI" and name ~= "ElvUI" and name ~= "SpartanUI" then
+      return
+    end
+    ns.RegisterHostSkin()
+    if ns.ThemeName and ns.ThemeName() == "match" and ns.SetTheme then
+      ns.SetTheme("match", false)
+    end
+  end)
+  ns.RegisterHostSkin()
 end
