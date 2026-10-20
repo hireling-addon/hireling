@@ -854,5 +854,21 @@ function ns.SelfTest()
   if bad then
     add("a bad listing id was accepted")
   end
+  if ns.PlayerName("Maela Copperwhistle-Area52") ~= "Maela Copperwhistle" then
+    add("a two-word name lost the last name")
+  end
+  if ns.PlayerName("Maela") == nil then
+    add("a one-word name was rejected")
+  end
+  local claim = ns.PackJob("Maela Copperwhistle", "abc123", "buyer")
+  if not claim or not string.find(claim, "Maela Copperwhistle", 1, true) or #claim > ns.MAX_MSG then
+    add("a claim packet dropped the last name")
+  end
+  if type(ns.ShowClaim) ~= "function" then
+    add("a claim does not open a box")
+  end
+  if type(ns.Greet) ~= "function" or type(ns.CreateMinimapButton) ~= "function" then
+    add("version line or minimap button is missing")
+  end
   return issues
 end
