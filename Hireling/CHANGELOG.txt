@@ -1,3 +1,7 @@
+0.1.11
+- The poster can drop the person holding a job, so it cannot be held hostage.
+- A post can be set to Anyone. More than one person can take it, and the poster can drop one of them.
+
 0.1.10
 - Posts travel as normal chat on the Hireling channel, hidden from the chat window. Forever rejects addon messages on that channel with code 7.
 

@@ -59,6 +59,7 @@ function ns.PackListing(listing)
     ns.Clean(listing.meet, 24),
     ns.Clean(listing.title, 42),
     note,
+    listing.open and "m" or "1",
   }
   local message = table.concat(parts, SEP)
   if #message > ns.MAX_MSG then
@@ -107,6 +108,7 @@ function ns.UnpackListing(message, sender)
     title = ns.Clean(parts[9], 42),
     note = ns.Clean(parts[10], 90),
     ruleset = ns.Ruleset(),
+    open = parts[11] == "m",
     updated = time(),
   }
 end
@@ -782,7 +784,7 @@ local function OnAddonMessage(prefix, message, distribution, sender, _, _, _, ch
         listing.claimed = mine
       end
     elseif owner == mine then
-      if listing and listing.claimed and listing.claimed ~= "" and listing.claimed ~= who then
+      if listing and not listing.open and listing.claimed and listing.claimed ~= "" and listing.claimed ~= who then
         local refuse = "N\031" .. id .. "\031" .. who
         ns.Send(refuse)
         if ns.SendTo then
@@ -793,7 +795,12 @@ local function OnAddonMessage(prefix, message, distribution, sender, _, _, _, ch
       local myRole = role == "buyer" and "seller" or "buyer"
       ns.RememberJob(key, myRole, who)
       if listing then
-        listing.claimed = who
+        if listing.open then
+          ns.AddHolder(listing, who)
+        else
+          listing.claimed = who
+          listing.holders = { who }
+        end
       end
       local title = listing and listing.title or "this job"
       local stamp = key .. "\031" .. who .. "\031" .. role
@@ -802,7 +809,7 @@ local function OnAddonMessage(prefix, message, distribution, sender, _, _, _, ch
         ns.claimPinged[stamp] = true
         ns.ShowClaim(who, title, role, id, owner)
       end
-    elseif listing and (not listing.claimed or listing.claimed == "" or listing.claimed == who) then
+    elseif listing and not listing.open and (not listing.claimed or listing.claimed == "" or listing.claimed == who) then
       listing.claimed = who
       if ns.Refresh then
         ns.Refresh()
@@ -854,11 +861,21 @@ local function OnAddonMessage(prefix, message, distribution, sender, _, _, _, ch
     local key = ns.Key(owner, id)
     local listing = ns.db.listings[key]
     if listing then
-      listing.claimed = nil
+      if not listing.open then
+        listing.claimed = nil
+      end
+      if ns.RemoveHolder then
+        ns.RemoveHolder(listing, claimer)
+      end
     end
     local mine = ns.MyName()
-    if mine == claimer or mine == owner then
+    if mine == claimer then
       ns.db.jobs[key] = nil
+    elseif mine == owner then
+      local job = ns.db.jobs[key]
+      if not job or job.with == claimer then
+        ns.db.jobs[key] = nil
+      end
     end
     ns.claimPinged = nil
     if mine == claimer and mine ~= owner and ns.ShowDecline then

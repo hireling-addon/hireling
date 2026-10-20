@@ -5,7 +5,7 @@ end
 
 ns.ADDON = ADDON
 ns.PREFIX = "Hireling"
-ns.VERSION = "0.1.10"
+ns.VERSION = "0.1.11"
 ns.NAME_MAX = 48
 ns.WEEK = 7 * 24 * 60 * 60
 ns.MAX_FEE = 5000 * 10000
@@ -468,6 +468,30 @@ function ns.DropInbox(who, title)
   end
 end
 
+function ns.AddHolder(listing, name)
+  if type(listing) ~= "table" or type(name) ~= "string" or name == "" then
+    return
+  end
+  listing.holders = type(listing.holders) == "table" and listing.holders or {}
+  for index = 1, #listing.holders do
+    if listing.holders[index] == name then
+      return
+    end
+  end
+  listing.holders[#listing.holders + 1] = name
+end
+
+function ns.RemoveHolder(listing, name)
+  if type(listing) ~= "table" or type(listing.holders) ~= "table" then
+    return
+  end
+  for index = #listing.holders, 1, -1 do
+    if listing.holders[index] == name then
+      table.remove(listing.holders, index)
+    end
+  end
+end
+
 function ns.ClaimListing(owner, id, by)
   if not ns.db or not owner or not id or id == "" then
     return
@@ -548,7 +572,10 @@ function ns.CheckUpdate()
   end
 end
 
-ns.CHANGELOG = [[0.1.10
+ns.CHANGELOG = [[0.1.11
+The poster can drop someone who took a job and never finished it. A post can also stay open so more than one person can take it.
+
+0.1.10
 Posts go out as chat on the Hireling channel. Forever was refusing addon messages there with code 7.
 
 0.1.9

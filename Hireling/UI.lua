@@ -669,7 +669,7 @@ function ns.Filtered(includeJobs)
       local kindOk = ns.filterKind == "all" or listing.kind == ns.filterKind
       local categoryOk = not ns.filterCategory or ns.filterCategory == "all" or listing.category == ns.filterCategory
       local claimed = listing.claimed and listing.claimed ~= ""
-      local hidden = claimed and listing.owner ~= mine and listing.claimed ~= mine
+      local hidden = not listing.open and claimed and listing.owner ~= mine and listing.claimed ~= mine
       if Matches(listing, needle) and kindOk and categoryOk and (includeJobs or not hidden) then
         if not includeJobs or mineRow then
           out[#out + 1] = listing
@@ -714,6 +714,9 @@ local function FillRow(row, listing)
   end
   if listing.standing then
     poster = poster .. " · Standing"
+  end
+  if listing.open then
+    poster = poster .. " · Anyone"
   end
   if listing.claimed and listing.claimed ~= "" then
     poster = poster .. " · Claimed"
@@ -999,6 +1002,9 @@ function ns.RefreshDetail()
   if place == "" then
     place = ns.Safe(listing.zone)
   end
+  if listing.open then
+    place = place .. " · anyone"
+  end
   ns.detail.meta:SetText((bid and "Bid · pays " or "Offer · asks ") .. ns.FormatCoin(listing.feeCopper) .. "\n" .. ns.Safe(listing.owner) .. " · " .. place .. " · " .. ns.Safe(listing.category))
   local note = ns.Safe(listing.note)
   ns.detail.note:SetText(note)
@@ -1035,7 +1041,7 @@ function ns.RefreshDetail()
     ns.detail.action:SetLabel(job.role == "seller" and "You are doing this" or "You took this")
     ns.detail.action.enabled = false
     ns.detail.action.onClick = nil
-  elseif listing.claimed and listing.claimed ~= "" and listing.claimed ~= mine then
+  elseif listing.claimed and listing.claimed ~= "" and listing.claimed ~= mine and not listing.open then
     ns.detail.action:SetLabel("Taken by " .. ns.Safe(listing.claimed))
     ns.detail.action.enabled = false
     ns.detail.action.onClick = nil
@@ -1053,6 +1059,38 @@ function ns.RefreshDetail()
     end
   end
   ns.detail.action:SetEnabledState(ns.detail.action.enabled)
+  if ns.detail.release then
+    local holders = {}
+    if type(listing.holders) == "table" then
+      for index = 1, #listing.holders do
+        if listing.holders[index] ~= "" then
+          holders[#holders + 1] = listing.holders[index]
+        end
+      end
+    end
+    if #holders == 0 and listing.claimed and listing.claimed ~= "" and listing.claimed ~= mine then
+      holders[1] = listing.claimed
+    end
+    if listing.owner == mine and #holders > 0 then
+      ns.detail.release:Show()
+      ns.detail.release:SetLabel(#holders > 1 and "Drop someone" or "Drop " .. holders[1])
+      ns.detail.release.onClick = function(self)
+        if #holders == 1 then
+          ns.DeclineClaim(holders[1], listing.id, listing.owner)
+          return
+        end
+        local choices = {}
+        for index = 1, #holders do
+          choices[index] = { id = holders[index], label = holders[index] }
+        end
+        ns.OpenChoices(self, choices, holders[1], function(id)
+          ns.DeclineClaim(id, listing.id, listing.owner)
+        end)
+      end
+    else
+      ns.detail.release:Hide()
+    end
+  end
   if ns.detail.whisper then
     if listing.owner == mine then
       ns.detail.whisper:Hide()
@@ -2046,9 +2084,17 @@ function ns.DeclineClaim(claimer, id, owner)
   local listing = ns.db.listings[key]
   local title = listing and listing.title or "this job"
   if listing then
-    listing.claimed = nil
+    if not listing.open then
+      listing.claimed = nil
+    end
+    if ns.RemoveHolder then
+      ns.RemoveHolder(listing, claimer)
+    end
   end
-  ns.db.jobs[key] = nil
+  local job = ns.db.jobs[key]
+  if not listing or not listing.open or not job or job.with == claimer then
+    ns.db.jobs[key] = nil
+  end
   ns.claimPinged = nil
   if listing and listing.localOnly == true then
     ns.ShowDecline("the poster", title)
@@ -2074,7 +2120,7 @@ function ns.TakeListing(listing, role)
   if not mine or not listing or listing.owner == mine then
     return
   end
-  if listing.claimed and listing.claimed ~= "" and listing.claimed ~= mine then
+  if listing.claimed and listing.claimed ~= "" and listing.claimed ~= mine and not listing.open then
     ns.SetStatus("Already taken by " .. listing.claimed .. ".")
     return
   end
@@ -2083,7 +2129,9 @@ function ns.TakeListing(listing, role)
     ns.SetStatus("You already have this one.")
     return
   end
-  listing.claimed = mine
+  if not listing.open then
+    listing.claimed = mine
+  end
   ns.RememberJob(key, role, listing.owner)
   if listing.localOnly == true then
     ns.ShowClaim(mine, listing.title, role, listing.id, listing.owner)
@@ -2234,6 +2282,7 @@ function ns.Publish()
     zone = zone,
     ruleset = ns.Ruleset(),
     standing = ns.post.standing == true,
+    open = ns.post.open == true,
     updated = time(),
   }
   local packed = ns.PackListing(listing)
@@ -2757,6 +2806,13 @@ function ns.BuildUI()
     standingBtn:SetLabel(ns.post.standing and "Keep this up" or "One time")
     standingBtn:SetActive(ns.post.standing == true)
   end
+  local openBtn = ClickButton(post, "One person", 140, 22)
+  openBtn:SetPoint("LEFT", standingBtn, "RIGHT", 6, 0)
+  openBtn.onClick = function()
+    ns.post.open = not ns.post.open
+    openBtn:SetLabel(ns.post.open and "Anyone" or "One person")
+    openBtn:SetActive(ns.post.open == true)
+  end
   ns.post.title = titleEdit
   ns.post.gold = gold
   ns.post.silver = silver
@@ -3063,8 +3119,11 @@ function ns.BuildUI()
   detailNote:SetJustifyH("LEFT")
   detailNote:SetWordWrap(true)
   detailNote:SetHeight(36)
-  local action = ClickButton(detail, "Take", 500, 24)
+  local action = ClickButton(detail, "Take", 330, 24)
   action:SetPoint("TOPLEFT", detailNote, "BOTTOMLEFT", 0, -6)
+  local release = ClickButton(detail, "Drop them", 164, 24)
+  release:SetPoint("TOPLEFT", action, "TOPRIGHT", 6, 0)
+  release:Hide()
   local form = CreateFrame("Frame", nil, detail, "BackdropTemplate")
   Paint(form, PANEL)
   form:SetPoint("BOTTOMLEFT", detail, "BOTTOMLEFT", 0, 0)
@@ -3108,6 +3167,7 @@ function ns.BuildUI()
     meta = meta,
     note = detailNote,
     action = action,
+    release = release,
     whisper = whisper,
     form = form,
     formLabel = formLabel,
