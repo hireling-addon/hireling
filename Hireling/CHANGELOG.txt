@@ -1,3 +1,6 @@
+0.1.5
+- Claiming a job pings the person who posted it, with a box and the tell sound.
+
 0.1.4
 - Asks and job packets keep the full Forever name, first and last, not just the first word.
 

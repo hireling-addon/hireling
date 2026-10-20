@@ -724,6 +724,14 @@ local function OnAddonMessage(prefix, message, distribution, sender, _, _, _, ch
     elseif owner == mine then
       local myRole = role == "buyer" and "seller" or "buyer"
       ns.RememberJob(key, myRole, who)
+      local listing = ns.db.listings[key]
+      local title = listing and listing.title or "this job"
+      local stamp = key .. "\031" .. who .. "\031" .. role
+      ns.claimPinged = ns.claimPinged or {}
+      if not ns.claimPinged[stamp] and ns.ShowClaim then
+        ns.claimPinged[stamp] = true
+        ns.ShowClaim(who, title, role)
+      end
     end
     return
   end

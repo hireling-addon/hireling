@@ -1297,6 +1297,8 @@ function ns.HoldPopup(kind, a, b, c, d)
   local text
   if kind == "ask" then
     text = (a or "Someone") .. " asked about " .. (b or "a job") .. ". The box opens when combat ends."
+  elseif kind == "claim" then
+    text = (a or "Someone") .. " claimed " .. (b or "a job") .. ". The box opens when combat ends."
   else
     text = "Answer from " .. (a or "someone") .. ". The box opens when combat ends."
   end
@@ -1311,15 +1313,21 @@ function ns.ReleasePopups()
   ns.held = {}
   local lastAsk = nil
   local lastAnswer = nil
+  local lastClaim = nil
   for index = 1, #held do
     if held[index].kind == "ask" then
       lastAsk = held[index]
+    elseif held[index].kind == "claim" then
+      lastClaim = held[index]
     else
       lastAnswer = held[index]
     end
   end
   if lastAsk then
     ns.ShowReply(lastAsk.a, lastAsk.b, lastAsk.c)
+  end
+  if lastClaim then
+    ns.ShowClaim(lastClaim.a, lastClaim.b, lastClaim.c)
   end
   if lastAnswer then
     ns.ShowAnswer(lastAnswer.a, lastAnswer.b, lastAnswer.c, lastAnswer.d)
@@ -1331,6 +1339,12 @@ function ns.StashPopupsForCombat()
     ns.held = ns.held or {}
     ns.held[#ns.held + 1] = { kind = "ask", a = ns.reply.who, b = ns.reply.job }
     ns.reply:Hide()
+  end
+  if ns.claim and ns.claim:IsShown() and ns.claim.payload then
+    local payload = ns.claim.payload
+    ns.held = ns.held or {}
+    ns.held[#ns.held + 1] = { kind = "claim", a = payload[1], b = payload[2], c = payload[3] }
+    ns.claim:Hide()
   end
   if ns.answer and ns.answer:IsShown() and ns.answer.payload then
     local payload = ns.answer.payload
@@ -1523,6 +1537,56 @@ function ns.ShowAnswer(who, job, choice, other)
   ns.PlayTell()
 end
 
+function ns.ShowClaim(who, title, role)
+  if ns.InCombat() then
+    ns.HoldPopup("claim", who, title or "this job", role)
+    return
+  end
+  if not ns.claim then
+    local claim = CreateFrame("Frame", "HirelingClaim", UIParent, "BackdropTemplate")
+    claim:SetSize(340, 120)
+    claim:SetPoint("CENTER", 0, 40)
+    claim:SetFrameStrata("DIALOG")
+    claim:SetFrameLevel(90)
+    claim:SetClampedToScreen(true)
+    claim:EnableMouse(true)
+    Paint(claim, BG, LINE)
+    local close = ClickButton(claim, "X", 22, 22)
+    close:SetPoint("TOPRIGHT", -6, -6)
+    close.onClick = function()
+      claim:Hide()
+    end
+    local from = Font(claim, true)
+    Color(from, GOLD)
+    from:SetPoint("TOPLEFT", 10, -12)
+    from:SetPoint("TOPRIGHT", -32, -12)
+    from:SetJustifyH("LEFT")
+    claim.from = from
+    local body = Font(claim, true)
+    Color(body, PAPER)
+    body:SetPoint("TOPLEFT", 10, -36)
+    body:SetPoint("TOPRIGHT", -10, -36)
+    body:SetJustifyH("LEFT")
+    body:SetWordWrap(true)
+    body:SetHeight(48)
+    claim.body = body
+    ns.claim = claim
+  end
+  local name = ns.PlayerName(who) or who or "Someone"
+  local job = title or "this job"
+  local line
+  if role == "seller" then
+    line = name .. " will do " .. job .. "."
+  else
+    line = name .. " took your offer: " .. job .. "."
+  end
+  ns.claim.payload = { name, job, role }
+  ns.claim.from:SetText(role == "seller" and "A seller claimed this" or "Your offer was taken")
+  ns.claim.body:SetText(line)
+  ns.claim:Show()
+  ns.PlayTell()
+end
+
 function ns.TakeListing(listing, role)
   local mine = ns.MyName()
   if not mine or listing.owner == mine then
@@ -1530,8 +1594,15 @@ function ns.TakeListing(listing, role)
   end
   local key = ns.Key(listing.owner, listing.id)
   ns.RememberJob(key, role, listing.owner)
-  if listing.localOnly ~= true then
-    ns.Send(ns.PackJob(listing.owner, listing.id, role))
+  if listing.localOnly == true then
+    ns.SetStatus("Test claim. Nobody was pinged.")
+  else
+    local packet = ns.PackJob(listing.owner, listing.id, role)
+    ns.Send(packet)
+    if ns.SendTo then
+      ns.SendTo(listing.owner, packet)
+    end
+    ns.SetStatus("Pinged " .. listing.owner .. ".")
   end
   ns.Log("You marked " .. listing.title .. " as " .. role .. ".")
   ns.RefreshDetail()

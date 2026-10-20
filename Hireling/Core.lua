@@ -5,7 +5,7 @@ end
 
 ns.ADDON = ADDON
 ns.PREFIX = "Hireling"
-ns.VERSION = "0.1.4"
+ns.VERSION = "0.1.5"
 ns.NAME_MAX = 48
 ns.WEEK = 7 * 24 * 60 * 60
 ns.MAX_FEE = 5000 * 10000
@@ -533,7 +533,10 @@ function ns.CheckUpdate()
   end
 end
 
-ns.CHANGELOG = [[0.1.4
+ns.CHANGELOG = [[0.1.5
+Claiming a job pings the person who posted it, with a box and the tell sound.
+
+0.1.4
 Asks and job packets keep the full Forever name, first and last.
 
 0.1.3
