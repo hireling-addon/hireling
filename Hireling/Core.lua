@@ -5,7 +5,7 @@ end
 
 ns.ADDON = ADDON
 ns.PREFIX = "Hireling"
-ns.VERSION = "0.1.11"
+ns.VERSION = "0.1.12"
 ns.NAME_MAX = 48
 ns.WEEK = 7 * 24 * 60 * 60
 ns.MAX_FEE = 5000 * 10000
@@ -572,7 +572,10 @@ function ns.CheckUpdate()
   end
 end
 
-ns.CHANGELOG = [[0.1.11
+ns.CHANGELOG = [[0.1.12
+Channel posts send only from a click or a slash command. A timer was calling protected chat and the client blocked it.
+
+0.1.11
 The poster can drop someone who took a job and never finished it. A post can also stay open so more than one person can take it.
 
 0.1.10
@@ -903,6 +906,9 @@ SLASH_HIRELING1 = "/hireling"
 SLASH_HIRELING2 = "/hl"
 SlashCmdList.HIRELING = function(msg)
   local ok, err = pcall(ns.Slash, msg)
+  if ns.Flush then
+    ns.Flush()
+  end
   if not ok then
     ns.Print("That command failed.")
     ns.Log("Slash error: " .. tostring(ns.Plain(err) or "sealed"))

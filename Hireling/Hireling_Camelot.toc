@@ -3,7 +3,7 @@
 ## Notes: Commission board for offers and paid bids. Gold is paid in the trade window, not by this addon.
 ## Author: Orion Wills
 ## OptionalDeps: EllesmereUI, ElvUI, SpartanUI
-## Version: 0.1.11
+## Version: 0.1.12
 ## SavedVariables: HirelingDB
 ## IconTexture: Interface\Icons\INV_Misc_Coin_01
 ## Category: Auction & Economy

@@ -1,3 +1,6 @@
+0.1.12
+- Channel posts send only from a click or /hireling. Login no longer calls protected chat, which was the ADDON_ACTION_BLOCKED error.
+
 0.1.11
 - The poster can drop the person holding a job, so it cannot be held hostage.
 - A post can be set to Anyone. More than one person can take it, and the poster can drop one of them.

@@ -460,6 +460,9 @@ local function ClickButton(parent, text, width, height)
     if self.enabled and self.onClick then
       self.onClick(self)
     end
+    if ns.Flush then
+      ns.Flush()
+    end
   end)
   button:RegisterForClicks("LeftButtonUp")
   return button
@@ -1543,6 +1546,9 @@ function ns.CreateMinimapButton()
           elseif ns.Toggle then
             ns.Toggle()
           end
+          if ns.Flush then
+            ns.Flush()
+          end
         end,
         OnTooltipShow = function(tip)
           if not tip then
@@ -1638,10 +1644,11 @@ function ns.CreateMinimapButton()
       if ns.ShowPage then
         ns.ShowPage("options")
       end
-      return
-    end
-    if ns.Toggle then
+    elseif ns.Toggle then
       ns.Toggle()
+    end
+    if ns.Flush then
+      ns.Flush()
     end
   end)
   button:SetScript("OnEnter", function(self)

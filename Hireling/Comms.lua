@@ -484,67 +484,45 @@ local function SendOnChannel(message, channelId)
 end
 
 local function Pump()
-  if pumping then
-    return
+  return
+end
+
+function ns.Flush()
+  if #queue == 0 then
+    return 0
   end
-  pumping = true
-  local function step()
-    if #queue == 0 then
-      pumping = false
-      return
+  if not ((C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage) then
+    ns.Log("SendChatMessage is missing. The queue was kept.")
+    return 0
+  end
+  local channelId = ns.ChannelId and ns.ChannelId() or nil
+  if not channelId then
+    if ns.SetStatus then
+      ns.SetStatus("Not on " .. ns.ChannelName() .. " yet. Use /hireling sync.")
     end
-    local function again(delay, putBack)
-      if putBack then
-        table.insert(queue, 1, putBack)
-      end
-      if C_Timer and C_Timer.After then
-        C_Timer.After(delay, step)
-      else
-        pumping = false
-      end
-    end
-    if not ((C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage) then
-      pumping = false
-      ns.Log("SendChatMessage is missing. The queue was kept.")
-      return
-    end
-    local channelId = ns.ChannelId()
-    if not channelId then
-      ns.pumpWaits = (ns.pumpWaits or 0) + 1
-      if ns.pumpWaits > 8 then
-        pumping = false
-        ns.Log("Not on the channel yet. Saved posts go out on the next sync.")
-        if ns.SetStatus then
-          ns.SetStatus("Not on " .. ns.ChannelName() .. " yet. Use /hireling sync.")
-        end
-        return
-      end
-      again(1, nil)
-      return
-    end
-    ns.pumpWaits = 0
+    return 0
+  end
+  local sent = 0
+  while #queue > 0 and sent < 6 do
     local message = table.remove(queue, 1)
-    local ok, why = SendOnChannel(message, channelId)
+    local ok = SendOnChannel(message, channelId)
     if not ok then
-      ns.failCount = (ns.failCount or 0) + 1
-      if ns.failCount >= 4 then
-        ns.failCount = 0
-        ns.Log("Dropped a post the channel would not take.")
-        again(1.2, nil)
-        return
+      table.insert(queue, 1, message)
+      if ns.SetStatus then
+        ns.SetStatus("The channel did not take that post. Click Sync to try again.")
       end
-      if not ns.toldSendFail then
-        ns.toldSendFail = true
-        ns.Log("The channel refused a post. " .. tostring(ns.Plain(why) or ""))
-      end
-      again(2, message)
-      return
+      return sent
     end
-    ns.failCount = 0
-    ns.sendGap = 1.2
-    again(ns.sendGap, nil)
+    sent = sent + 1
   end
-  step()
+  if ns.SetStatus then
+    if #queue > 0 then
+      ns.SetStatus("Sent " .. sent .. ". " .. #queue .. " still waiting. Click Sync again.")
+    else
+      ns.SetStatus("Sent " .. sent .. " on " .. ns.ChannelName() .. ".")
+    end
+  end
+  return sent
 end
 
 function ns.SendTo(name, message)
@@ -579,7 +557,6 @@ function ns.Send(message)
     table.remove(queue, 1)
   end
   queue[#queue + 1] = message
-  Pump()
   return true
 end
 
@@ -646,7 +623,9 @@ function ns.Announce()
   end
   ns.lastAnnounce = now
   SendOwn(false)
-  ns.Log("Sending your posts on " .. ns.ChannelName() .. ".")
+  if ns.SetStatus then
+    ns.SetStatus(#queue .. " waiting. Click Sync or type /hireling sync to send.")
+  end
   if ns.UpdateStatus then
     ns.UpdateStatus()
   end
