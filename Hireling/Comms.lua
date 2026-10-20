@@ -719,18 +719,37 @@ local function OnAddonMessage(prefix, message, distribution, sender, _, _, _, ch
     end
     local key = ns.Key(owner, id)
     local mine = ns.MyName()
+    local listing = ns.db.listings[key]
     if who == mine then
       ns.RememberJob(key, role, owner)
+      if listing then
+        listing.claimed = mine
+      end
     elseif owner == mine then
+      if listing and listing.claimed and listing.claimed ~= "" and listing.claimed ~= who then
+        local refuse = "N\031" .. id .. "\031" .. who
+        ns.Send(refuse)
+        if ns.SendTo then
+          ns.SendTo(who, refuse)
+        end
+        return
+      end
       local myRole = role == "buyer" and "seller" or "buyer"
       ns.RememberJob(key, myRole, who)
-      local listing = ns.db.listings[key]
+      if listing then
+        listing.claimed = who
+      end
       local title = listing and listing.title or "this job"
       local stamp = key .. "\031" .. who .. "\031" .. role
       ns.claimPinged = ns.claimPinged or {}
       if not ns.claimPinged[stamp] and ns.ShowClaim then
         ns.claimPinged[stamp] = true
-        ns.ShowClaim(who, title, role)
+        ns.ShowClaim(who, title, role, id, owner)
+      end
+    elseif listing and (not listing.claimed or listing.claimed == "" or listing.claimed == who) then
+      listing.claimed = who
+      if ns.Refresh then
+        ns.Refresh()
       end
     end
     return
@@ -748,7 +767,49 @@ local function OnAddonMessage(prefix, message, distribution, sender, _, _, _, ch
     local owner = ns.Clean(parts[2], ns.NAME_MAX or 48)
     local id = parts[3] or ""
     if owner ~= "" and string.match(id, "^[a-z0-9]+$") and ns.MarkDone then
-      ns.MarkDone(ns.Key(owner, id), true)
+      local key = ns.Key(owner, id)
+      ns.MarkDone(key, true)
+      local mine = ns.MyName()
+      if who ~= mine and ns.ShowDone then
+        ns.donePinged = ns.donePinged or {}
+        local stamp = key .. "\031" .. who
+        if not ns.donePinged[stamp] then
+          ns.donePinged[stamp] = true
+          local listing = ns.db.listings[key]
+          local job = ns.db.jobs and ns.db.jobs[key]
+          local both = job and job.mineDone and job.theirDone
+          ns.ShowDone(who, listing and listing.title or "this job", both)
+        end
+      end
+      if ns.Refresh then
+        ns.Refresh()
+      end
+    end
+    return
+  end
+  if opcode == "N" then
+    local parts = Split(message)
+    local id = parts[2] or ""
+    local claimer = ns.Clean(parts[3], ns.NAME_MAX or 48)
+    if not string.match(id, "^[a-z0-9]+$") or claimer == "" then
+      return
+    end
+    local owner = who
+    local key = ns.Key(owner, id)
+    local listing = ns.db.listings[key]
+    if listing then
+      listing.claimed = nil
+    end
+    local mine = ns.MyName()
+    if mine == claimer or mine == owner then
+      ns.db.jobs[key] = nil
+    end
+    ns.claimPinged = nil
+    if mine == claimer and mine ~= owner and ns.ShowDecline then
+      ns.ShowDecline(owner, listing and listing.title or "this job")
+    end
+    if ns.Refresh then
+      ns.Refresh()
     end
     return
   end

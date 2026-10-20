@@ -55,6 +55,22 @@ if (source["Comms.lua"].includes("Clean(owner, 12)") || source["Comms.lua"].incl
   issues.push("a name field is still capped at 12 characters");
 }
 
+if (!source["UI.lua"].includes("Already taken by")) {
+  issues.push("a second claim is not blocked");
+}
+if (!source["UI.lua"].includes("function ns.DeclineClaim")) {
+  issues.push("a claim cannot be declined");
+}
+if (!source["Comms.lua"].includes('opcode == "N"')) {
+  issues.push("a decline is not received");
+}
+if (!source["UI.lua"].includes("function ns.ShowDone")) {
+  issues.push("marking done does not ping");
+}
+if (!source["UI.lua"].includes("Test claim. This is the box the poster gets.")) {
+  issues.push("test mode does not show the claim box");
+}
+
 if (issues.length) {
   console.error(`Hireling check failed (${issues.length})`);
   for (const issue of issues) console.error(`- ${issue}`);
