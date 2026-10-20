@@ -1,3 +1,10 @@
+0.1.10
+- Posts travel as normal chat on the Hireling channel, hidden from the chat window. Forever rejects addon messages on that channel with code 7.
+
+0.1.9
+- Channel code 7 is the channel being busy. Hireling waits and sends again instead of dropping the post.
+- Tab and shift-tab move through the fields on the same page. Enter does the same on a single-line box.
+
 0.1.8
 - The post form asks a real question for the category. Enchant asks what enchant, craft asks what you are making.
 - Zone is no longer a second box. It is taken from where you are standing. You only type the spot.

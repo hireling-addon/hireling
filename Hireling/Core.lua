@@ -5,7 +5,7 @@ end
 
 ns.ADDON = ADDON
 ns.PREFIX = "Hireling"
-ns.VERSION = "0.1.8"
+ns.VERSION = "0.1.10"
 ns.NAME_MAX = 48
 ns.WEEK = 7 * 24 * 60 * 60
 ns.MAX_FEE = 5000 * 10000
@@ -548,7 +548,13 @@ function ns.CheckUpdate()
   end
 end
 
-ns.CHANGELOG = [[0.1.8
+ns.CHANGELOG = [[0.1.10
+Posts go out as chat on the Hireling channel. Forever was refusing addon messages there with code 7.
+
+0.1.9
+A busy channel is retried instead of dropped. Tab and shift-tab move through the fields on a page.
+
+0.1.8
 Posting asks the real question for the category. Enchant asks what enchant. Zone is taken from where you stand, so it is not typed twice.
 
 0.1.7

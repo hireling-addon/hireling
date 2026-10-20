@@ -15,7 +15,7 @@ local CATEGORIES = {
 
 function ns.Clean(text, maxLen)
   text = tostring(text or "")
-  text = text:gsub("[%z\1-\31|]", " ")
+  text = text:gsub("[%z\1-\31|~]", " ")
   text = text:gsub("%s+", " ")
   text = ns.Trim(text)
   if maxLen and #text > maxLen then
@@ -421,10 +421,64 @@ local pumping = false
 
 local function ResultThrottled(result)
   result = ns.Plain(result)
-  if Enum and Enum.SendAddonMessageResult and result == Enum.SendAddonMessageResult.AddonMessageThrottle then
-    return true
+  if Enum and Enum.SendAddonMessageResult then
+    if result == Enum.SendAddonMessageResult.AddonMessageThrottle or result == Enum.SendAddonMessageResult.ChannelThrottle then
+      return true
+    end
   end
-  return tostring(result or "") == "AddonMessageThrottle"
+  local name = tostring(result or "")
+  return name == "AddonMessageThrottle" or name == "ChannelThrottle" or name == "3" or name == "8"
+end
+
+local WIRE = "HL1:"
+
+local function ToChat(message)
+  return WIRE .. string.gsub(message, SEP, "~")
+end
+
+local function FromChat(text)
+  if type(text) ~= "string" or string.sub(text, 1, #WIRE) ~= WIRE then
+    return nil
+  end
+  return string.gsub(string.sub(text, #WIRE + 1), "~", SEP)
+end
+
+local function SendOnChannel(message, channelId)
+  local body = ToChat(message)
+  if #body > 255 then
+    return false, "long"
+  end
+  local function once(fn, id)
+    local ok, result = pcall(fn, body, "CHANNEL", nil, id)
+    if ok and result ~= false then
+      return true
+    end
+    return false, result
+  end
+  local err = nil
+  if C_ChatInfo and C_ChatInfo.SendChatMessage then
+    local ok, why = once(C_ChatInfo.SendChatMessage, channelId)
+    if ok then
+      return true
+    end
+    ok, why = once(C_ChatInfo.SendChatMessage, tostring(channelId))
+    if ok then
+      return true
+    end
+    err = why
+  end
+  if SendChatMessage then
+    local ok, why = once(SendChatMessage, channelId)
+    if ok then
+      return true
+    end
+    ok, why = once(SendChatMessage, tostring(channelId))
+    if ok then
+      return true
+    end
+    err = why or err
+  end
+  return false, err or "no chat send"
 end
 
 local function Pump()
@@ -447,9 +501,9 @@ local function Pump()
         pumping = false
       end
     end
-    if not C_ChatInfo or not C_ChatInfo.SendAddonMessage then
+    if not ((C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage) then
       pumping = false
-      ns.Log("SendAddonMessage is missing. The queue was kept.")
+      ns.Log("SendChatMessage is missing. The queue was kept.")
       return
     end
     local channelId = ns.ChannelId()
@@ -468,28 +522,25 @@ local function Pump()
     end
     ns.pumpWaits = 0
     local message = table.remove(queue, 1)
-    local ok, first, second = pcall(C_ChatInfo.SendAddonMessage, ns.PREFIX, message, "CHANNEL", tostring(channelId))
+    local ok, why = SendOnChannel(message, channelId)
     if not ok then
-      ok, first, second = pcall(C_ChatInfo.SendAddonMessage, ns.PREFIX, message, "CHANNEL", channelId)
-    end
-    if not ok then
-      ns.Log("Send failed: " .. tostring(first))
+      ns.failCount = (ns.failCount or 0) + 1
+      if ns.failCount >= 4 then
+        ns.failCount = 0
+        ns.Log("Dropped a post the channel would not take.")
+        again(1.2, nil)
+        return
+      end
+      if not ns.toldSendFail then
+        ns.toldSendFail = true
+        ns.Log("The channel refused a post. " .. tostring(ns.Plain(why) or ""))
+      end
       again(2, message)
       return
     end
-    local result = ns.Plain(second)
-    if result == nil then
-      result = ns.Plain(first)
-    end
-    if ResultThrottled(result) then
-      again(1, message)
-      return
-    end
-    if type(result) == "number" and result ~= 0 and not ns.toldSendFail then
-      ns.toldSendFail = true
-      ns.Log("The channel refused a message, code " .. tostring(result) .. ".")
-    end
-    again(0.25, nil)
+    ns.failCount = 0
+    ns.sendGap = 1.2
+    again(ns.sendGap, nil)
   end
   step()
 end
@@ -587,8 +638,13 @@ function ns.Announce()
     return
   end
   ns.joinTries = 0
+  local now = time and time() or 0
+  if ns.lastAnnounce and now - ns.lastAnnounce < 20 then
+    return
+  end
+  ns.lastAnnounce = now
   SendOwn(false)
-  ns.Log("Announced on " .. ns.ChannelName() .. ".")
+  ns.Log("Sending your posts on " .. ns.ChannelName() .. ".")
   if ns.UpdateStatus then
     ns.UpdateStatus()
   end
@@ -835,7 +891,20 @@ end
 if CreateFrame then
   local listener = CreateFrame("Frame")
   listener:RegisterEvent("CHAT_MSG_ADDON")
-  listener:SetScript("OnEvent", function(_, _, ...)
+  listener:RegisterEvent("CHAT_MSG_CHANNEL")
+  listener:SetScript("OnEvent", function(_, event, ...)
+    if event == "CHAT_MSG_CHANNEL" then
+      local message, sender, _, _, _, _, _, _, channelName = ...
+      local packet = FromChat(ns.Plain(message))
+      if not packet then
+        return
+      end
+      local ok, err = pcall(OnAddonMessage, ns.PREFIX, packet, "CHANNEL", sender, nil, nil, nil, channelName)
+      if not ok then
+        ns.Log("Message error: " .. tostring(ns.Plain(err) or "sealed"))
+      end
+      return
+    end
     local ok, err = pcall(OnAddonMessage, ...)
     if not ok then
       ns.Log("Message error: " .. tostring(ns.Plain(err) or "sealed"))
@@ -843,7 +912,7 @@ if CreateFrame then
   end)
   local function leaked(_, _, ...)
     local first = ns.Plain(select(1, ...))
-    if type(first) == "string" and (first == ns.PREFIX or string.find(first, SEP, 1, true)) then
+    if type(first) == "string" and (string.sub(first, 1, 4) == "HL1:" or first == ns.PREFIX or string.find(first, SEP, 1, true)) then
       return true
     end
     return false

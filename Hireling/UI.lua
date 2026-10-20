@@ -482,11 +482,29 @@ local function EditBox(parent, width, height, multi, maxLetters)
     edit:SetMultiLine(true)
   else
     edit:SetScript("OnEnterPressed", function(self)
+      local target = ns.NextEdit and ns.NextEdit(self, false) or nil
+      if target then
+        target:SetFocus()
+        if target.HighlightText then
+          target:HighlightText()
+        end
+        return
+      end
       self:ClearFocus()
     end)
   end
   edit:SetScript("OnEscapePressed", function(self)
     self:ClearFocus()
+  end)
+  edit:SetScript("OnTabPressed", function(self)
+    local backward = type(IsShiftKeyDown) == "function" and IsShiftKeyDown()
+    local target = ns.NextEdit and ns.NextEdit(self, backward) or nil
+    if target then
+      target:SetFocus()
+      if target.HighlightText then
+        target:HighlightText()
+      end
+    end
   end)
   Paint(edit, INK, LINE)
   Color(edit, PAPER)
@@ -500,6 +518,38 @@ local function EditBox(parent, width, height, multi, maxLetters)
   end)
   ns.edits[#ns.edits + 1] = edit
   return edit
+end
+
+function ns.NextEdit(current, backward)
+  local parent = current.GetParent and current:GetParent() or nil
+  if not parent then
+    return nil
+  end
+  local list = {}
+  for index = 1, #ns.edits do
+    local box = ns.edits[index]
+    if box and box.GetParent and box:GetParent() == parent and box.IsVisible and box:IsVisible() then
+      list[#list + 1] = box
+    end
+  end
+  if #list < 2 then
+    return nil
+  end
+  local start = 1
+  for index = 1, #list do
+    if list[index] == current then
+      start = index
+      break
+    end
+  end
+  local step = backward and -1 or 1
+  local index = start + step
+  if index < 1 then
+    index = #list
+  elseif index > #list then
+    index = 1
+  end
+  return list[index]
 end
 
 local function MakeStars(parent)
