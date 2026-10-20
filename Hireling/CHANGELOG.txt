@@ -1,3 +1,7 @@
+0.1.8
+- The post form asks a real question for the category. Enchant asks what enchant, craft asks what you are making.
+- Zone is no longer a second box. It is taken from where you are standing. You only type the spot.
+
 0.1.7
 - My UI matches EllesmereUI, ElvUI, or SpartanUI. If none of those is loaded, it uses your class color.
 - My UI is the default until you pick Acid, Ice, or Flare on purpose.

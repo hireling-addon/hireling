@@ -5,7 +5,7 @@ end
 
 ns.ADDON = ADDON
 ns.PREFIX = "Hireling"
-ns.VERSION = "0.1.7"
+ns.VERSION = "0.1.8"
 ns.NAME_MAX = 48
 ns.WEEK = 7 * 24 * 60 * 60
 ns.MAX_FEE = 5000 * 10000
@@ -202,9 +202,21 @@ function ns.InitDB()
   if ns.db.themePicked ~= true and (ns.db.theme == nil or ns.db.theme == "acid") then
     ns.db.theme = "match"
   end
-  if ns.db.theme ~= "acid" and ns.db.theme ~= "ice" and ns.db.theme ~= "flare" and ns.db.theme ~= "match" then
+  if ns.db.theme ~= "acid" and ns.db.theme ~= "ice" and ns.db.theme ~= "flare" and ns.db.theme ~= "match" and ns.db.theme ~= "custom" then
     ns.db.theme = "match"
   end
+  if type(ns.db.custom) ~= "table" then
+    ns.db.custom = {}
+  end
+  local function customColor(key, fallback)
+    local color = ns.db.custom[key]
+    if type(color) ~= "table" or type(color[1]) ~= "number" then
+      ns.db.custom[key] = { fallback[1], fallback[2], fallback[3] }
+    end
+  end
+  customColor("bg", { 0.027, 0.027, 0.031 })
+  customColor("accent", { 0.894, 1.000, 0.290 })
+  customColor("text", { 0.957, 0.957, 0.965 })
   if ns.db.testMode ~= true then
     ns.db.testMode = false
   end
@@ -536,7 +548,10 @@ function ns.CheckUpdate()
   end
 end
 
-ns.CHANGELOG = [[0.1.7
+ns.CHANGELOG = [[0.1.8
+Posting asks the real question for the category. Enchant asks what enchant. Zone is taken from where you stand, so it is not typed twice.
+
+0.1.7
 My UI copies the accent from EllesmereUI, ElvUI, or SpartanUI. Otherwise it uses your class color.
 
 0.1.6

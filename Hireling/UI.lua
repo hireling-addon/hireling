@@ -16,7 +16,7 @@ local DIM = { 0.220, 0.220, 0.250 }
 local FONT_PATH = "Interface\\AddOns\\Hireling\\Fonts\\IBMPlexSans-Regular.ttf"
 local CATEGORY_LIST = { "Craft", "Enchant", "Gather", "Group", "Portal", "Other" }
 local THEME_ORDER = { "match", "acid", "ice", "flare" }
-local THEME_LABEL = { match = "My UI", acid = "Acid", ice = "Ice", flare = "Flare" }
+local THEME_LABEL = { match = "My UI", acid = "Acid", ice = "Ice", flare = "Flare", custom = "Custom" }
 local PALETTES = {
   acid = {
     gold = { 0.894, 1.000, 0.290 },
@@ -65,6 +65,18 @@ local PALETTES = {
     line = { 0.310, 0.310, 0.310 },
     bg = { 0.040, 0.033, 0.027 },
     dim = { 0.220, 0.180, 0.150 },
+  },
+  custom = {
+    gold = { 0.894, 1.000, 0.290 },
+    ink = { 0.035, 0.035, 0.043 },
+    paper = { 0.957, 0.957, 0.965 },
+    muted = { 0.557, 0.557, 0.588 },
+    rust = { 1.000, 0.302, 0.180 },
+    panel = { 0.063, 0.063, 0.071 },
+    hot = { 0.110, 0.110, 0.122 },
+    line = { 0.173, 0.173, 0.192 },
+    bg = { 0.027, 0.027, 0.031 },
+    dim = { 0.220, 0.220, 0.250 },
   },
 }
 
@@ -258,6 +270,73 @@ function ns.RefreshMatchPalette()
   return source
 end
 
+local function HSVToRGB(hue, sat, value)
+  hue = hue % 1
+  local index = math.floor(hue * 6)
+  local frac = hue * 6 - index
+  local p = value * (1 - sat)
+  local q = value * (1 - frac * sat)
+  local t = value * (1 - (1 - frac) * sat)
+  index = index % 6
+  if index == 0 then
+    return value, t, p
+  elseif index == 1 then
+    return q, value, p
+  elseif index == 2 then
+    return p, value, t
+  elseif index == 3 then
+    return p, q, value
+  elseif index == 4 then
+    return t, p, value
+  end
+  return value, p, q
+end
+
+local function RGBToHSV(red, green, blue)
+  local max = math.max(red, green, blue)
+  local min = math.min(red, green, blue)
+  local hue, sat = 0, 0
+  local delta = max - min
+  if max > 0 then
+    sat = delta / max
+  end
+  if delta > 0 then
+    if max == red then
+      hue = (green - blue) / delta
+      if green < blue then
+        hue = hue + 6
+      end
+    elseif max == green then
+      hue = (blue - red) / delta + 2
+    else
+      hue = (red - green) / delta + 4
+    end
+    hue = hue / 6
+  end
+  return hue, sat, max
+end
+
+function ns.RefreshCustomPalette()
+  local custom = ns.db and ns.db.custom or {}
+  local accent = custom.accent or { 0.894, 1, 0.290 }
+  local panel = custom.bg or { 0.027, 0.027, 0.031 }
+  local text = custom.text or { 0.957, 0.957, 0.965 }
+  local lum = panel[1] * 0.3 + panel[2] * 0.59 + panel[3] * 0.11
+  local ink = lum > 0.55 and Mix(panel, { 0, 0, 0 }, 0.2) or Mix(panel, { 0, 0, 0 }, 0.45)
+  PALETTES.custom = {
+    gold = { accent[1], accent[2], accent[3] },
+    ink = ink,
+    paper = { text[1], text[2], text[3] },
+    muted = Mix(text, panel, 0.45),
+    rust = Mix(accent, { 1, 0.25, 0.2 }, 0.35),
+    panel = Mix(panel, { 1, 1, 1 }, lum > 0.55 and 0.06 or 0.08),
+    hot = Mix(panel, accent, 0.18),
+    line = Mix(panel, accent, 0.45),
+    bg = { panel[1], panel[2], panel[3] },
+    dim = Mix(panel, accent, 0.22),
+  }
+end
+
 function ns.RegisterHostSkin()
   if ns.hostSkinRegistered or type(EllesmereUI) ~= "table" or type(EllesmereUI.RegisterSkin) ~= "function" then
     return
@@ -281,6 +360,8 @@ end
 function ns.ApplyPalette(name)
   if name == "match" then
     ns.RefreshMatchPalette()
+  elseif name == "custom" then
+    ns.RefreshCustomPalette()
   end
   local pal = PALETTES[name] or PALETTES.match or PALETTES.acid
   CopyRGB(GOLD, pal.gold)
@@ -864,11 +945,12 @@ function ns.RefreshDetail()
   local key = ns.Key(listing.owner, listing.id)
   local job = ns.db.jobs[key]
   ns.detail.title:SetText(ns.Safe(listing.title))
-  ns.detail.meta:SetText((bid and "Bid · pays " or "Offer · asks ") .. ns.FormatCoin(listing.feeCopper) .. "\n" .. ns.Safe(listing.owner) .. " · " .. ns.Safe(listing.zone) .. " · " .. ns.Safe(listing.category))
-  local note = ns.Safe(listing.note)
-  if listing.meet and listing.meet ~= "" then
-    note = note .. "\nMeet: " .. ns.Safe(listing.meet)
+  local place = ns.Safe(listing.meet)
+  if place == "" then
+    place = ns.Safe(listing.zone)
   end
+  ns.detail.meta:SetText((bid and "Bid · pays " or "Offer · asks ") .. ns.FormatCoin(listing.feeCopper) .. "\n" .. ns.Safe(listing.owner) .. " · " .. place .. " · " .. ns.Safe(listing.category))
+  local note = ns.Safe(listing.note)
   ns.detail.note:SetText(note)
   ns.detail.action:Show()
   if listing.owner == mine and not job then
@@ -2029,7 +2111,7 @@ function ns.DraftListing()
     faction = ns.FactionCode(),
     category = ns.post and ns.post.category or "Craft",
     feeCopper = 100,
-    zone = ns.post and ns.post.zone:GetText() or "",
+    zone = GetZoneText and ns.Clean(GetZoneText(), 18) or "",
     meet = ns.post and ns.post.meet:GetText() or "",
     title = ns.post and ns.post.title:GetText() or "",
     note = ns.post and ns.post.note:GetText() or "",
@@ -2054,7 +2136,7 @@ function ns.Publish()
   end
   local title = ns.Clean(ns.post.title:GetText(), 42)
   if title == "" then
-    ns.SetStatus("Give the job a title.")
+    ns.SetStatus("Answer " .. (ns.post.askLabel and ns.post.askLabel:GetText() or "what the job is") .. ".")
     return
   end
   local gold = tonumber(ns.post.gold:GetText()) or 0
@@ -2080,8 +2162,13 @@ function ns.Publish()
     id = ns.NewId()
     guard = guard + 1
   end
-  local zone = ns.Clean(ns.post.zone:GetText(), 18)
-  if zone == "" and GetZoneText then
+  local meet = ns.Clean(ns.post.meet:GetText(), 24)
+  if meet == "" then
+    ns.SetStatus("Say where this happens.")
+    return
+  end
+  local zone = ""
+  if GetZoneText then
     zone = ns.Clean(GetZoneText(), 18)
   end
   local listing = {
@@ -2092,7 +2179,7 @@ function ns.Publish()
     category = ns.post.category or "Other",
     title = title,
     note = ns.Clean(ns.post.note:GetText(), 90),
-    meet = ns.Clean(ns.post.meet:GetText(), 24),
+    meet = meet,
     feeCopper = fee,
     zone = zone,
     ruleset = ns.Ruleset(),
@@ -2232,6 +2319,8 @@ end
 function ns.SetTheme(name, picked)
   if name == "match" then
     ns.RefreshMatchPalette()
+  elseif name == "custom" then
+    ns.RefreshCustomPalette()
   end
   if not PALETTES[name] or not ns.db then
     return
@@ -2524,10 +2613,33 @@ function ns.BuildUI()
   taskBtn:SetPoint("TOPLEFT", offerBtn, "TOPRIGHT", 4, 0)
   local categoryBtn = ClickButton(post, "Craft", 520, 24)
   categoryBtn:SetPoint("TOPLEFT", offerBtn, "BOTTOMLEFT", 0, -6)
+  local function askLabel()
+    local task = ns.post.kind == "task"
+    local category = ns.post.category
+    if category == "Enchant" then
+      return task and "What enchant do you need?" or "What enchant?"
+    end
+    if category == "Craft" then
+      return task and "What do you need made?" or "What are you making?"
+    end
+    if category == "Gather" then
+      return task and "What should they gather?" or "What are you gathering?"
+    end
+    if category == "Group" then
+      return task and "What run do you need?" or "What run or role?"
+    end
+    if category == "Portal" then
+      return "Portal to where?"
+    end
+    return task and "What do you need?" or "What will you do?"
+  end
   local function paintKind()
     offerBtn:SetActive(ns.post.kind == "offer")
     taskBtn:SetActive(ns.post.kind == "task")
     categoryBtn:SetLabel(ns.post.category)
+    if ns.post.askLabel then
+      ns.post.askLabel:SetText(askLabel())
+    end
     ns.UpdateDraftSize()
   end
   offerBtn.onClick = function()
@@ -2548,8 +2660,9 @@ function ns.BuildUI()
       paintKind()
     end)
   end
-  local titleLabel = FieldLabel(post, "Title")
+  local titleLabel = FieldLabel(post, "What are you making?")
   titleLabel:SetPoint("TOPLEFT", categoryBtn, "BOTTOMLEFT", 0, -8)
+  ns.post.askLabel = titleLabel
   local titleEdit = EditBox(post, 520, 24, false, 42)
   titleEdit:SetPoint("TOPLEFT", titleLabel, "BOTTOMLEFT", 0, -2)
   local feeLabel = FieldLabel(post, "Gold")
@@ -2566,17 +2679,18 @@ function ns.BuildUI()
   if silver.SetNumeric then
     silver:SetNumeric(true)
   end
-  local zoneLabel = FieldLabel(post, "Zone")
-  local zone = EditBox(post, 340, 24, false, 18)
-  zone:SetPoint("TOPLEFT", silver, "TOPRIGHT", 8, 0)
-  zoneLabel:SetPoint("BOTTOMLEFT", zone, "TOPLEFT", 0, 2)
-  local meetLabel = FieldLabel(post, "Where to meet")
+  local meetLabel = FieldLabel(post, "Where")
   meetLabel:SetPoint("TOPLEFT", gold, "BOTTOMLEFT", 0, -8)
   local meet = EditBox(post, 520, 24, false, 24)
   meet:SetPoint("TOPLEFT", meetLabel, "BOTTOMLEFT", 0, -2)
-  local noteLabel = FieldLabel(post, "Note")
-  noteLabel:SetPoint("TOPLEFT", meet, "BOTTOMLEFT", 0, -8)
-  local note = EditBox(post, 520, 64, true, 90)
+  local here = Font(post, true)
+  here:SetPoint("TOPLEFT", meet, "BOTTOMLEFT", 0, -4)
+  here:SetWidth(520)
+  here:SetJustifyH("LEFT")
+  Color(here, MUTED or PAPER)
+  local noteLabel = FieldLabel(post, "Anything else")
+  noteLabel:SetPoint("TOPLEFT", here, "BOTTOMLEFT", 0, -8)
+  local note = EditBox(post, 520, 48, true, 90)
   note:SetPoint("TOPLEFT", noteLabel, "BOTTOMLEFT", 0, -2)
   local postBtn = ClickButton(post, "Post on the channel", 200, 26)
   postBtn:SetPoint("BOTTOMLEFT", post, "BOTTOMLEFT", 0, 0)
@@ -2596,23 +2710,27 @@ function ns.BuildUI()
   ns.post.title = titleEdit
   ns.post.gold = gold
   ns.post.silver = silver
-  ns.post.zone = zone
   ns.post.meet = meet
   ns.post.note = note
   ns.post.bytes = bytes
+  ns.post.here = here
   local function draftChanged()
     ns.UpdateDraftSize()
   end
   titleEdit:SetScript("OnTextChanged", draftChanged)
   gold:SetScript("OnTextChanged", draftChanged)
   silver:SetScript("OnTextChanged", draftChanged)
-  zone:SetScript("OnTextChanged", draftChanged)
   meet:SetScript("OnTextChanged", draftChanged)
   note:SetScript("OnTextChanged", draftChanged)
   post:SetScript("OnShow", function()
-    if zone:GetText() == "" and GetZoneText then
-      zone:SetText(GetZoneText() or "")
+    local zoneName = "your current zone"
+    if GetZoneText then
+      local shown = GetZoneText()
+      if type(shown) == "string" and shown ~= "" then
+        zoneName = shown
+      end
     end
+    here:SetText("Zone is filled from where you are standing: " .. zoneName)
     paintKind()
   end)
 
