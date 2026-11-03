@@ -2381,8 +2381,12 @@ function ns.RunCheck()
   if not ns.frame then
     add("The window was not built.")
   else
+    -- Forever 1.60.1 Beta 4: GetFrameStrata may return a secret value
+    -- (warcraft.wiki.gg Patch_1.60.1/API_changes, 2026-10-08 notes).
     local strata = ns.frame:GetFrameStrata()
-    if strata ~= "HIGH" then
+    if ns.IsSecret(strata) then
+      add("Window strata is secret; cannot verify HIGH.")
+    elseif strata ~= "HIGH" then
       add("Window strata is " .. tostring(strata) .. ", expected HIGH.")
     end
     if ns.close and ns.drag and ns.close:GetFrameLevel() <= ns.drag:GetFrameLevel() then
@@ -2406,7 +2410,7 @@ function ns.RunCheck()
     Walk(ns.frame, function(child)
       if child.GetFrameStrata then
         local childStrata = child:GetFrameStrata()
-        if childStrata == "TOOLTIP" or childStrata == "FULLSCREEN" or childStrata == "FULLSCREEN_DIALOG" or childStrata == "DIALOG" then
+        if not ns.IsSecret(childStrata) and (childStrata == "TOOLTIP" or childStrata == "FULLSCREEN" or childStrata == "FULLSCREEN_DIALOG" or childStrata == "DIALOG") then
           add("A child frame is on the " .. childStrata .. " strata.")
         end
       end
