@@ -1,3 +1,6 @@
+0.1.13
+- The built-in check no longer errors when Forever hides a window layer. Normal use is unchanged.
+
 0.1.12
 - Channel posts send only from a click or /hireling. Login no longer calls protected chat, which was the ADDON_ACTION_BLOCKED error.
 
